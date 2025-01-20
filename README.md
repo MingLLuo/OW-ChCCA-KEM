@@ -18,3 +18,5 @@ Given $\lambda$, we could conservatively use the following parameter setting.
 - $k = \lambda, m = 2n\log q,a' = n^{2.5}m$
 
 We will change them to adapt the real world circumstances.
+
+Code implementation is personal, still in the process of implementation
