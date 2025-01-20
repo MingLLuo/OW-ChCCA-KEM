@@ -2,7 +2,7 @@ A repository for One-Way Checkable CCA(Chosen-Cipherteext Attack) KEM, implement
 
 Paper: [[PWZ2023]Lattice-based Authenticated Key Exchange with Tight Security](https://eprint.iacr.org/2023/823)
 
-For the first time, we will use some package in [Cloudflare/circl](https://github.com/cloudflare/circl) to implement the KEM.
+For the first time, we will use some package in [tuneinsight/lattigo](https://github.com/tuneinsight/lattigo) to implement the KEM.
 
 Following the analysis in the paper,the parameters have to satisfy the following conditions.
 
