@@ -59,6 +59,21 @@ func PrintBigInt(b *big.Int) {
 	fmt.Printf("big.Int: %s\n", b.String())
 }
 
+// PrintVec Print Vec
+func PrintVec(vec Vec) {
+	for i, v := range vec {
+		fmt.Printf("vec[%d] = %s\n", i, v.String())
+	}
+}
+
+// PrintMat Print Mat
+func PrintMat(mat Mat) {
+	for i, v := range mat {
+		fmt.Printf("mat[%d]:\n", i)
+		PrintVec(v)
+	}
+}
+
 func InitBigIntVec(n int) Vec {
 	vec := make([]*big.Int, n)
 	for i := range n {
@@ -77,6 +92,10 @@ func InitBigIntMat(n, m int) Mat {
 
 // VecSumWithMod Calculate the sum of a vector of big.Int with modulo
 func VecSumWithMod(vec Vec, mod *big.Int) *big.Int {
+	// Check if mod is 0
+	if mod.Cmp(big.NewInt(0)) == 0 {
+		panic("mod is 0")
+	}
 	sum := new(big.Int)
 	for _, v := range vec {
 		sum.Add(sum, v)
@@ -86,16 +105,32 @@ func VecSumWithMod(vec Vec, mod *big.Int) *big.Int {
 }
 
 func BigIntAddMod(a, b, mod *big.Int) *big.Int {
+	// Check if mod is 0
+	if mod.Cmp(big.NewInt(0)) == 0 {
+		panic("mod is 0")
+	}
 	sum := new(big.Int).Add(a, b)
 	return sum.Mod(sum, mod)
 }
 
 func BigIntSubMod(a, b, mod *big.Int) *big.Int {
+	// Check if mod is 0
+	if mod.Cmp(big.NewInt(0)) == 0 {
+		panic("mod is 0")
+	}
 	sub := new(big.Int).Sub(a, b)
 	return sub.Mod(sub, mod)
 }
 
 func BigIntDotProductMod(a, b Vec, mod *big.Int) *big.Int {
+	// Check if mod is 0
+	if mod.Cmp(big.NewInt(0)) == 0 {
+		panic("mod is 0")
+	}
+	// Check if a and b have different lengths
+	if len(a) != len(b) {
+		panic("a and b have different lengths")
+	}
 	dot := new(big.Int)
 	for i := range a {
 		BigIntAddMod(dot, new(big.Int).Mul(a[i], b[i]), mod)
@@ -106,6 +141,10 @@ func BigIntDotProductMod(a, b Vec, mod *big.Int) *big.Int {
 // Round Do componentwise rounding of a vector of big.Int t, to get {0,1}^n
 // rounded[i] = 0, closer to 0 than delim,
 func Round(t Vec, delim *big.Int) Vec {
+	// Check if delim is > 0
+	if delim.Cmp(big.NewInt(0)) <= 0 {
+		panic("delim <= 0")
+	}
 	rounded := InitBigIntVec(len(t))
 	for i, v := range t {
 		toDelim := new(big.Int).Sub(v, delim)
@@ -120,6 +159,12 @@ func Round(t Vec, delim *big.Int) Vec {
 }
 
 func (m Mat) Transpose() Mat {
+	// Check if m is empty
+	if len(m) == 0 {
+		panic("m is empty")
+	} else if len(m[0]) == 0 {
+		panic("m[0] is empty")
+	}
 	mT := InitBigIntMat(len(m[0]), len(m))
 	for i := range mT {
 		for j := range m {

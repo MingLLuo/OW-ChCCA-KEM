@@ -43,15 +43,31 @@ const (
 //	Alpha_ = N * N * M * 67
 //)
 
+//const (
+//	SeedSize = 32
+//	Lambda   = 16
+//	K        = Lambda
+//	// sqrt(N) = 32
+//	N = 64 * Lambda
+//	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
+//	QLen    = 64
+//	M       = 2 * N * QLen
+//	Alpha   = 32
+//	Eta     = 32
+//	Log2Eta = 5
+//	Alpha_  = N * N * M * 32
+//)
+
 const (
 	SeedSize = 32
-	Lambda   = 16
+	Lambda   = 32
 	K        = Lambda
 	// sqrt(N) = 32
-	N = 64 * Lambda
+	N = 512
 	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
-	QLen    = 64
-	M       = 2 * N * QLen
+	QLen = 64
+	//M       = 2 * N * QLen
+	M       = 128
 	Alpha   = 32
 	Eta     = 32
 	Log2Eta = 5
@@ -65,10 +81,11 @@ type Parameters struct {
 }
 
 var testParameters = Parameters{
-	10, Qi60[len(Qi60)-14:], Pi60[len(Pi60)-14:],
+	10, Qi60[len(Qi60)-1:], Pi60[len(Pi60)-1:],
 }
 
 // Qi60 are the first [0:32] 61-bit close to 2^{62} NTT-friendly primes for N up to 2^{17}
+// +1 -> prime bit += 61
 var Qi60 = []uint64{
 	0x1fffffffffe00001, 0x1fffffffffc80001, 0x1fffffffffb40001, 0x1fffffffff500001,
 	0x1fffffffff380001, 0x1fffffffff000001, 0x1ffffffffef00001, 0x1ffffffffee80001,

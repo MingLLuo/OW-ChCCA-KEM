@@ -24,7 +24,6 @@ type SharedParam struct {
 }
 
 type PrivateKey struct {
-	pRing      *ring.Ring
 	PolyVecZbT []ring.Poly
 	Zb         Mat
 	b          bool
@@ -33,13 +32,12 @@ type PrivateKey struct {
 }
 
 type PublicKey struct {
-	pRing *ring.Ring
-	U0    Mat
-	U1    Mat
-	sp    *SharedParam
+	U0 Mat
+	U1 Mat
+	sp *SharedParam
 }
 
-// Setup generate n x m BigInt matrix for the key generation, filled with random values
+// Setup generates n x m BigInt matrix for the key generation, filled with random values
 func Setup() *SharedParam {
 	var ss SharedParam
 	pRing, err := ring.NewRing(M, moduli)
@@ -48,7 +46,7 @@ func Setup() *SharedParam {
 	}
 	ss.pRing = pRing
 	ss.A = make(Mat, N)
-	uniformSampler := ring.NewUniformSampler(sampling.PRNG(nil), pRing)
+	uniformSampler := ring.NewUniformSampler(sampling.PRNG(cryptoRand.Reader), pRing)
 	ss.PolyVecA = InitPolyVecWithSampler(N, uniformSampler)
 	for i := range N {
 		ss.A[i] = InitBigIntVec(M)
@@ -80,8 +78,6 @@ func InitKey(rand io.Reader) (*PublicKey, *PrivateKey, *SharedParam, error) {
 	if err != nil {
 		panic(err)
 	}
-	pk.pRing = pRing
-	sk.pRing = pRing
 	ss.pRing = pRing
 	p := pRing.Modulus()
 	pFloat, _ := p.Float64()
@@ -167,8 +163,6 @@ func NewKey(rand io.Reader, ss SharedParam) (*PublicKey, *PrivateKey, error) {
 	sk.b = b[0] == 1
 
 	pRing := ss.pRing
-	pk.pRing = pRing
-	sk.pRing = pRing
 
 	p := pRing.Modulus()
 	pFloat, _ := p.Float64()
@@ -240,7 +234,7 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	s, rho, h0, h1 := G(r)
 	e := SampleD(M, Alpha_, rho)
 	// x := A^t * s + e
-	pRing := pk.pRing
+	pRing := pk.sp.pRing
 	matA := pk.sp.A
 	p := pRing.Modulus()
 	x := InitBigIntVec(M)
@@ -304,7 +298,7 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 	//ct := (c0, c1, x, hatH0, hatH1)
 	c0, c1, x, hatH0, hatH1 := ParseCt(ct)
-	p := sk.pRing.Modulus()
+	p := sk.sp.pRing.Modulus()
 	roundP2 := new(big.Int).Rsh(p, 1)
 	var hatHb, hatHnb Vec
 	var hb, hnb Vec
@@ -520,5 +514,5 @@ func (pk *PublicKey) Pack(buf []byte) {
 
 	pk.U0.Pack(buf)
 	pk.U1.Pack(buf[UMatrixSize:])
-
+	// TODO
 }

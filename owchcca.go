@@ -19,7 +19,7 @@ type Scheme interface {
 	Name() string
 
 	// GenerateKeyPair creates a new key pair.
-	GenerateKeyPair(par Mat) (*PublicKey, *PrivateKey, *SharedParam, error)
+	GenerateKeyPair() (*PublicKey, *PrivateKey, *SharedParam, error)
 
 	// GenerateNewKeyPair creates a new key pair from a shared key.
 	GenerateNewKeyPair(ss SharedParam) (*PublicKey, *PrivateKey, error)
@@ -60,6 +60,11 @@ type Scheme interface {
 // Name of the scheme
 func Name() string {
 	return "OW-ChCCA-KEM"
+}
+
+// Setup generates a shared parameter for the scheme.
+func Setup() *SharedParam {
+	return internal.Setup()
 }
 
 // GenerateKeyPair generates a public/private key pair using entropy from rand.

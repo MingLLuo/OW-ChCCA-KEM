@@ -32,3 +32,22 @@ func TestBigIntToUint64Slice1(t *testing.T) {
 	fmt.Printf("length of coeffs[0]: %v\n", len(coeffs[0]))
 	PrintBigInt(newBigInt)
 }
+
+func TestVecSumWithMod(t *testing.T) {
+	// Test Empty Vec
+	emptyVec := InitBigIntVec(0)
+	emptySum := VecSumWithMod(emptyVec, bignum.NewInt("1"))
+	if emptySum.Int64() != 0 {
+		t.Errorf("emptySum != 0")
+	}
+
+	// Test Vec with 10 elements
+	vec := InitBigIntVec(10)
+	for i := range vec {
+		vec[i] = bignum.NewInt(i)
+	}
+	sum := VecSumWithMod(vec, bignum.NewInt("10"))
+	if sum.Int64() != 5 {
+		t.Errorf("sum != 0")
+	}
+}
