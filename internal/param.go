@@ -20,6 +20,9 @@ const (
 
 	// Size of a packed private key.
 	PrivateKeySize = 32
+
+	// Size of a packed pk.U matrix
+	UMatrixSize = N * Lambda * Lambda / 8
 )
 
 //const (

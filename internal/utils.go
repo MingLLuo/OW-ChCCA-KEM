@@ -90,6 +90,11 @@ func BigIntAddMod(a, b, mod *big.Int) *big.Int {
 	return sum.Mod(sum, mod)
 }
 
+func BigIntSubMod(a, b, mod *big.Int) *big.Int {
+	sub := new(big.Int).Sub(a, b)
+	return sub.Mod(sub, mod)
+}
+
 func BigIntDotProductMod(a, b Vec, mod *big.Int) *big.Int {
 	dot := new(big.Int)
 	for i := range a {
@@ -122,4 +127,40 @@ func (m Mat) Transpose() Mat {
 		}
 	}
 	return mT
+}
+
+func (v Vec) Equal(x Vec) bool {
+	if len(v) != len(x) {
+		return false
+	}
+	for i := range v {
+		if v[i].Cmp(x[i]) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (v Vec) Pack(buf []byte) {
+	for i, b := range buf {
+		v[i].SetUint64(uint64(b))
+	}
+}
+
+func (v Vec) Unpack(buf []byte) {
+	for i, b := range buf {
+		v[i].SetUint64(uint64(b))
+	}
+}
+
+func (m Mat) Pack(buf []byte) {
+	for i, v := range m {
+		v.Pack(buf[i*len(v) : (i+1)*len(v)])
+	}
+}
+
+func (m Mat) Unpack(buf []byte) {
+	for i, v := range m {
+		v.Unpack(buf[i*len(v) : (i+1)*len(v)])
+	}
 }

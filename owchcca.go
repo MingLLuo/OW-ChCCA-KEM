@@ -92,7 +92,7 @@ func Encapsulate(pk PublicKey) ([]byte, []byte, error) {
 // Decapsulate Returns the shared key encapsulated in ciphertext ct for the
 // private key sk.
 func Decapsulate(sk PrivateKey, ct []byte) ([]byte, error) {
-	return nil, nil
+	return sk.DecapsulateTo(ct)
 }
 
 // MarshalBinaryPublicKey marshals a PublicKey into a binary form.

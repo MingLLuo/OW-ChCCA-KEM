@@ -3,6 +3,7 @@ package internal
 import (
 	"OW-ChCCA-KEM/internal/sha3"
 	cryptoRand "crypto/rand"
+	"fmt"
 	"io"
 	"math/big"
 
@@ -28,6 +29,7 @@ type PrivateKey struct {
 	Zb         Mat
 	b          bool
 	sp         *SharedParam
+	pk         *PublicKey
 }
 
 type PublicKey struct {
@@ -141,6 +143,7 @@ func InitKey(rand io.Reader) (*PublicKey, *PrivateKey, *SharedParam, error) {
 	}
 	pk.sp = &ss
 	sk.sp = &ss
+	sk.pk = &pk
 	return &pk, &sk, &ss, nil
 }
 
@@ -216,6 +219,7 @@ func NewKey(rand io.Reader, ss SharedParam) (*PublicKey, *PrivateKey, error) {
 		pk.U0 = matZq
 		pk.U1 = matAz
 	}
+	sk.pk = &pk
 
 	return &pk, &sk, nil
 }
@@ -267,34 +271,14 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	}
 
 	// hatK0 = H(x,hatH0,h0), C0 = hatK0 xor R
-	h := sha3.New256()
-	for i := range x {
-		h.Write(x[i].Bytes())
-	}
-	for i := range hatH0 {
-		h.Write(hatH0[i].Bytes())
-	}
-	for i := range h0 {
-		h.Write(h0[i].Bytes())
-	}
-	hatK0 := h.Sum(nil)[:Lambda/8]
+	hatK0 := hash3(x, hatH0, h0)
 	c0 := make([]byte, Lambda/8)
 	for i := range c0 {
 		c0[i] = hatK0[i] ^ rBytes[i]
 	}
 
 	// hatK1 = H(x,hatH1,h1), C1 = hatK1 xor R
-	h.Reset()
-	for i := range x {
-		h.Write(x[i].Bytes())
-	}
-	for i := range hatH1 {
-		h.Write(hatH1[i].Bytes())
-	}
-	for i := range h1 {
-		h.Write(h1[i].Bytes())
-	}
-	hatK1 := h.Sum(nil)[:Lambda/8]
+	hatK1 := hash3(x, hatH1, h1)
 	c1 := make([]byte, Lambda/8)
 	for i := range c1 {
 		c1[i] = hatK1[i] ^ rBytes[i]
@@ -304,6 +288,7 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	ct = append(ct, c0...)
 	ct = append(ct, c1...)
 	for i := range x {
+		// m x Lambda bits
 		ct = append(ct, x[i].Bytes()...)
 	}
 	for i := range hatH0 {
@@ -314,6 +299,127 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	}
 	ss = r.Bytes()
 	return ct, ss, nil
+}
+
+func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
+	//ct := (c0, c1, x, hatH0, hatH1)
+	c0, c1, x, hatH0, hatH1 := ParseCt(ct)
+	p := sk.pRing.Modulus()
+	roundP2 := new(big.Int).Rsh(p, 1)
+	var hatHb, hatHnb Vec
+	var hb, hnb Vec
+	var cb, cnb []byte
+	var _, unb Mat
+	if sk.b {
+		hatHb, hatHnb = hatH1, hatH0
+		cb, cnb = c1, c0
+		_, unb = sk.pk.U1, sk.pk.U0
+	} else {
+		hatHb, hatHnb = hatH0, hatH1
+		cb, cnb = c0, c1
+		_, unb = sk.pk.U0, sk.pk.U1
+	}
+	// hb_ = Round(hatHb - Zb^t * x)
+
+	// Zb^t * x, (Lambda x M) * (M x 1) = Lambda x 1
+	ZbTx := InitBigIntVec(Lambda)
+	matZbT := sk.Zb.Transpose()
+	for i := range Lambda {
+		ZbTx[i] = BigIntDotProductMod(matZbT[i], x, p)
+	}
+	// hatHb - Zb^t * x
+	round_ := InitBigIntVec(Lambda)
+	for i := range Lambda {
+		round_[i] = BigIntSubMod(hatHb[i], ZbTx[i], p)
+	}
+	hb_ := Round(round_, roundP2)
+	// hatKb = H(x, hatHb, hb_), R = cb xor hatKb
+	hatKb := hash3(x, hatHb, hb_)
+	r := make([]byte, Lambda/8)
+	for i := range r {
+		r[i] = cb[i] ^ hatKb[i]
+	}
+	s, rho, h0, h1 := G(new(big.Int).SetBytes(r))
+	if sk.b {
+		// b = 1
+		hb, hnb = h1, h0
+	} else {
+		// b = 0
+		hb, hnb = h0, h1
+	}
+
+	// hatHnb_ = Unb^t * s + hnb round(p/2)
+	hatHnb_ := InitBigIntVec(N)
+	matUnbT := unb.Transpose()
+	for i := range N {
+		hatHnb_[i] = BigIntDotProductMod(matUnbT[i], s, p)
+		BigIntAddMod(hatHnb_[i], hnb[i], roundP2)
+	}
+	// hatKnb = H(x,hatHnb_,hnb)
+	hatKnb := hash3(x, hatHnb_, hnb)
+
+	// check x = A^t * s + e
+	e := SampleD(M, Alpha_, rho)
+	x_ := InitBigIntVec(M)
+	matAt := sk.sp.A.Transpose()
+	for i := range M {
+		BigIntAddMod(x_[i], e[i], p)
+		BigIntAddMod(x_[i], BigIntDotProductMod(matAt[i], s, p), p)
+	}
+	if !x.Equal(x_) {
+		return nil, fmt.Errorf("decap failed, check x = A^t * s + e failed")
+	}
+
+	// check hatKnb xor R = cnb
+	for i := range cnb {
+		if cnb[i] != (hatKnb[i] ^ r[i]) {
+			return nil, fmt.Errorf("decap failed, check hatKnb xor R = cnb failed")
+		}
+	}
+	// check hb = hb_
+	if !hb.Equal(hb_) {
+		return nil, fmt.Errorf("decap failed, check hb = hb_ failed")
+	}
+	// check hatHnb = hatHnb_
+	if !hatHnb.Equal(hatHnb_) {
+		return nil, fmt.Errorf("decap failed, check hatHnb = hatHnb_ failed")
+	}
+	return r, nil
+}
+
+func hash3(x Vec, hatHb Vec, hb Vec) []byte {
+	h := sha3.New256()
+	for i := range x {
+		h.Write(x[i].Bytes())
+	}
+	for i := range hatHb {
+		h.Write(hatHb[i].Bytes())
+	}
+	for i := range hb {
+		h.Write(hb[i].Bytes())
+	}
+	return h.Sum(nil)[:Lambda/8]
+}
+
+func ParseCt(ct []byte) (c0 []byte, c1 []byte, x Vec, hatH0 Vec, hatH1 Vec) {
+	// c0, c1 with length of Lambda/8 bytes
+	c0 = ct[:Lambda/8]
+	c1 = ct[Lambda/8 : Lambda/4]
+	// x with length of M * Lambda/8 bytes
+	x = InitBigIntVec(M)
+	// hatH0,hatH1 with length of N * Lambda/8 bytes
+	hatH0 = InitBigIntVec(N)
+	hatH1 = InitBigIntVec(N)
+	for i := range M {
+		x[i].SetBytes(ct[(i+2)*Lambda/8 : (i+2+1)*Lambda/8])
+	}
+	for i := range N {
+		hatH0[i].SetBytes(ct[(M+2+i)*Lambda/8 : (M+2+i+1)*Lambda/8])
+	}
+	for i := range N {
+		hatH1[i].SetBytes(ct[(M+2+N+i)*Lambda/8 : (M+2+N+i+1)*Lambda/8])
+	}
+	return c0, c1, x, hatH0, hatH1
 }
 
 // G is random oracle, in our case, it is a hash function sha3-256
@@ -388,7 +494,7 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 		}
 	}
 	h1, h2 = arr[0], arr[1]
-	// Seperate sBytes to sBits, then to s[i]
+	// Separate sBytes to sBits, then to s[i]
 	sBits := make([]byte, N*(Log2Eta+1))
 	for i := range sBytes {
 		for j := 0; j < 8; j++ {
@@ -399,4 +505,20 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 		s[i].SetBytes(sBits[i*(Log2Eta+1) : (i+1)*(Log2Eta+1)])
 	}
 	return s, rho, h1, h2
+}
+
+func (pk *PublicKey) MarshalBinary() ([]byte, error) {
+	buf := make([]byte, PublicKeySize)
+	pk.Pack(buf)
+	return buf, nil
+}
+
+func (pk *PublicKey) Pack(buf []byte) {
+	if len(buf) != PublicKeySize {
+		panic("buf must be of length PublicKeySize")
+	}
+
+	pk.U0.Pack(buf)
+	pk.U1.Pack(buf[UMatrixSize:])
+
 }
