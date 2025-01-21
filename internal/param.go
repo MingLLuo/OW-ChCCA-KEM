@@ -8,10 +8,12 @@ const (
 	EncapsulationSeedSize = 32
 
 	// Size of the established shared key.
-	SharedKeySize = 32
+	SharedKeySize = Lambda
 
 	// Size of the encapsulated shared key.
-	CiphertextSize = 32
+	// c0 + c1 + x + hatH0 + hatH1
+	// InBytes, Lambda/8 + Lambda/8 + M * Lambda/8 + N * Lambda/8 + N * Lambda/8
+	CiphertextSize = Lambda * (2 + M + 2*N)
 
 	// Size of a packed public key.
 	PublicKeySize = 32
@@ -20,19 +22,37 @@ const (
 	PrivateKeySize = 32
 )
 
+//const (
+//	SeedSize = 32
+//	// 2^6
+//	Lambda = 64
+//	K      = Lambda
+//	// sqrt(N) = 67
+//	N = 70 * Lambda
+//	// Approximate 70 * 64 -> 2^12, 6 * 12 = 72, 7 * 12 = 84 -> 80
+//	QLen = 80
+//	M    = 2 * N * QLen
+//	// sqrt(2^6 * 70) = 66 -> 64
+//	Alpha  = 64
+//	Eta    = 64
+//	Log2Eta = 6
+//	// Alpha_ 2^(2.5*10) * 2^16
+//	Alpha_ = N * N * M * 67
+//)
+
 const (
-	K        = 2
-	N        = 16
-	M        = 32
-	Alpha    = 2
-	Alpha_   = 2
-	Eta1     = 3
-	DU       = 10
-	DV       = 4
 	SeedSize = 32
-	Lambda   = 32
-	// Q change q to string
-	Q = 12289
+	Lambda   = 16
+	K        = Lambda
+	// sqrt(N) = 32
+	N = 64 * Lambda
+	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
+	QLen    = 64
+	M       = 2 * N * QLen
+	Alpha   = 32
+	Eta     = 32
+	Log2Eta = 5
+	Alpha_  = N * N * M * 32
 )
 
 type Parameters struct {

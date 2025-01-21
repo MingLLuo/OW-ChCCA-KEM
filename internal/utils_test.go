@@ -23,6 +23,12 @@ func TestBigIntToUint64Slice1(t *testing.T) {
 		fmt.Print(err)
 	}
 	newBigInt := newRing.Modulus()
-
+	fmt.Printf("length of newBigInt: %v\n", len(newBigInt.Bytes()))
+	uint64Slice := BigIntToUint64Slice(newBigInt)
+	fmt.Printf("length of uint64Slice: %v\n", len(uint64Slice))
+	coeffs := newRing.NewPoly().Coeffs
+	// print length of coeffs
+	fmt.Printf("length of coeffs: %v\n", len(coeffs))
+	fmt.Printf("length of coeffs[0]: %v\n", len(coeffs[0]))
 	PrintBigInt(newBigInt)
 }

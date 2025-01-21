@@ -6,16 +6,13 @@ import (
 	"github.com/tuneinsight/lattigo/v6/ring"
 	"github.com/tuneinsight/lattigo/v6/utils/sampling"
 	"github.com/tuneinsight/lattigo/v6/utils/structs"
-	"golang.org/x/exp/rand"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // SampleD will sample from a discrete Gaussian distribution
 
-func SampleD(m int, alpha_ float64, rho sampling.PRNG) (structs.Matrix[uint64], big.Int) {
+func SampleD(m int, alpha_ float64, rho *big.Int) Vec {
 	// Sample from a discrete Gaussian distribution
 	// NewRing creates a new ring with m moduli of the given bit-size, m must be a power of 2 larger than 8.
-	// make p to []uint64
 	newRing, err := ring.NewRing(m, moduli)
 	if err != nil {
 		panic(err)
@@ -23,12 +20,16 @@ func SampleD(m int, alpha_ float64, rho sampling.PRNG) (structs.Matrix[uint64], 
 	p := newRing.Modulus()
 	p_float, _ := p.Float64()
 	d := ring.DiscreteGaussian{Sigma: alpha_, Bound: p_float}
-	sampler, err := ring.NewSampler(rho, newRing, d, false)
+	prng, err := sampling.NewKeyedPRNG(rho.Bytes())
+	sampler, err := ring.NewSampler(prng, newRing, d, false)
 	if err != nil {
 		panic(err)
 	}
 	pol := sampler.ReadNew()
-	return Transpose(pol.Coeffs), *p
+	// convert to []big.Int
+	coeffs := InitBigIntVec(m)
+	newRing.PolyToBigint(pol, 1, coeffs)
+	return coeffs
 }
 
 // Transpose Matrix
@@ -41,14 +42,4 @@ func Transpose(m structs.Matrix[uint64]) structs.Matrix[uint64] {
 		}
 	}
 	return mT
-}
-
-func SampleD1(m int, alpha_ float64, rho rand.Source) []uint64 {
-	// Sample from a discrete Gaussian distribution
-	d := distuv.Normal{Mu: 0, Sigma: alpha_, Src: rho}
-	samples := make([]uint64, m)
-	for i := 0; i < m; i++ {
-		samples[i] = uint64(d.Rand())
-	}
-	return samples
 }

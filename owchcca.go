@@ -6,26 +6,6 @@ import (
 	"OW-ChCCA-KEM/internal"
 )
 
-const (
-	// Size of seed for NewKeyFromSeed
-	KeySeedSize = 32
-
-	// Size of seed for EncapsulateTo.
-	EncapsulationSeedSize = 32
-
-	// Size of the established shared key.
-	SharedKeySize = 32
-
-	// Size of the encapsulated shared key.
-	CiphertextSize = 32
-
-	// Size of a packed public key.
-	PublicKeySize = 32
-
-	// Size of a packed private key.
-	PrivateKeySize = 32
-)
-
 type (
 	SharedParam = internal.SharedParam
 	PublicKey   = internal.PublicKey
@@ -48,48 +28,42 @@ type Scheme interface {
 	// encapsulates it into a ciphertext ct.
 	Encapsulate(pk PublicKey) (ct, ss []byte, err error)
 
-	// Returns the shared key encapsulated in ciphertext ct for the
+	// Decapsulate Returns the shared key encapsulated in ciphertext ct for the
 	// private key sk.
 	Decapsulate(sk PrivateKey, ct []byte) ([]byte, error)
 
-	// Unmarshals a PublicKey from the provided buffer.
+	// MarshalBinaryPublicKey marshals a PublicKey into a binary form.
+	MarshalBinaryPublicKey(pk PublicKey) ([]byte, error)
+
+	// MarshalBinaryPrivateKey marshals a PrivateKey into a binary form.
+	MarshalBinaryPrivateKey(sk PrivateKey) ([]byte, error)
+
+	// UnmarshalBinaryPublicKey Unmarshals a PublicKey from the provided buffer.
 	UnmarshalBinaryPublicKey([]byte) (PublicKey, error)
 
-	// Unmarshals a PrivateKey from the provided buffer.
+	// UnmarshalBinaryPrivateKey Unmarshals a PrivateKey from the provided buffer.
 	UnmarshalBinaryPrivateKey([]byte) (PrivateKey, error)
 
-	// Size of encapsulated keys.
+	// CiphertextSize Size of encapsulated keys.
 	CiphertextSize() int
 
-	// Size of established shared keys.
+	// SharedKeySize Size of established shared keys.
 	SharedKeySize() int
 
-	// Size of packed private keys.
+	// PrivateKeySize Size of packed private keys.
 	PrivateKeySize() int
 
-	// Size of packed public keys.
+	// PublicKeySize Size of packed public keys.
 	PublicKeySize() int
+}
 
-	// DeriveKeyPair deterministically derives a pair of keys from a seed.
-	// Panics if the length of seed is not equal to the value returned by
-	// SeedSize.
-	DeriveKeyPair(seed []byte) (PublicKey, PrivateKey)
-
-	// Size of seed used in DeriveKey
-	SeedSize() int
-
-	// EncapsulateDeterministically generates a shared key ss for the public
-	// key deterministically from the given seed and encapsulates it into
-	// a ciphertext ct. If unsure, you're better off using Encapsulate().
-	EncapsulateDeterministically(pk PublicKey, seed []byte) (
-		ct, ss []byte, err error)
-
-	// Size of seed used in EncapsulateDeterministically().
-	EncapsulationSeedSize() int
+// Name of the scheme
+func Name() string {
+	return "OW-ChCCA-KEM"
 }
 
 // GenerateKeyPair generates a public/private key pair using entropy from rand.
-// Paper use the seed from Setup with par := random(Z_q, n x m)
+// Paper uses the seed from Setup with par := random(Z_q, n x m)
 func GenerateKeyPair() (*PublicKey, *PrivateKey, *SharedParam, error) {
 	rand := io.Reader(nil)
 	pk, sk, ss, err := internal.InitKey(rand)
@@ -107,4 +81,56 @@ func GenerateNewKeyPair(ss SharedParam) (*PublicKey, *PrivateKey, error) {
 		return nil, nil, err
 	}
 	return pk, sk, nil
+}
+
+// Encapsulate generates a shared key ss for the public key and
+// encapsulates it into a ciphertext ct.
+func Encapsulate(pk PublicKey) ([]byte, []byte, error) {
+	return pk.EncapsulateTo()
+}
+
+// Decapsulate Returns the shared key encapsulated in ciphertext ct for the
+// private key sk.
+func Decapsulate(sk PrivateKey, ct []byte) ([]byte, error) {
+	return nil, nil
+}
+
+// MarshalBinaryPublicKey marshals a PublicKey into a binary form.
+func MarshalBinaryPublicKey(pk PublicKey) ([]byte, error) {
+	return nil, nil
+}
+
+// MarshalBinaryPrivateKey marshals a PrivateKey into a binary form.
+func MarshalBinaryPrivateKey(sk PrivateKey) ([]byte, error) {
+	return nil, nil
+}
+
+// UnmarshalBinaryPublicKey Unmarshals a PublicKey from the provided buffer.
+func UnmarshalBinaryPublicKey([]byte) (PublicKey, error) {
+	return PublicKey{}, nil
+}
+
+// UnmarshalBinaryPrivateKey Unmarshals a PrivateKey from the provided buffer.
+func UnmarshalBinaryPrivateKey([]byte) (PrivateKey, error) {
+	return PrivateKey{}, nil
+}
+
+// CiphertextSize Size of encapsulated keys.
+func CiphertextSize() int {
+	return internal.CiphertextSize
+}
+
+// SharedKeySize Size of established shared keys.
+func SharedKeySize() int {
+	return internal.SharedKeySize
+}
+
+// PrivateKeySize Size of packed private keys.
+func PrivateKeySize() int {
+	return internal.PrivateKeySize
+}
+
+// PublicKeySize Size of packed public keys.
+func PublicKeySize() int {
+	return internal.PublicKeySize
 }
