@@ -1,9 +1,8 @@
 package owchcca
 
 import (
-	"io"
-
 	"OW-ChCCA-KEM/internal"
+	cryptoRand "crypto/rand"
 )
 
 type (
@@ -70,7 +69,7 @@ func Setup() *SharedParam {
 // GenerateKeyPair generates a public/private key pair using entropy from rand.
 // Paper uses the seed from Setup with par := random(Z_q, n x m)
 func GenerateKeyPair() (*PublicKey, *PrivateKey, *SharedParam, error) {
-	rand := io.Reader(nil)
+	rand := cryptoRand.Reader
 	pk, sk, ss, err := internal.InitKey(rand)
 	if err != nil {
 		return nil, nil, nil, err
@@ -80,8 +79,8 @@ func GenerateKeyPair() (*PublicKey, *PrivateKey, *SharedParam, error) {
 
 // GenerateNewKeyPair generates a public/private key pair using entropy from rand.
 func GenerateNewKeyPair(ss SharedParam) (*PublicKey, *PrivateKey, error) {
-	rand := io.Reader(nil)
-	pk, sk, err := internal.NewKey(rand, ss)
+	rand := cryptoRand.Reader
+	pk, sk, err := internal.NewKey(rand, &ss)
 	if err != nil {
 		return nil, nil, err
 	}

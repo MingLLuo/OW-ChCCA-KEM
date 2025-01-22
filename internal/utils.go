@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"OW-ChCCA-KEM/internal/sha3"
 	"encoding/binary"
 	"fmt"
 	"github.com/tuneinsight/lattigo/v6/ring"
@@ -208,4 +209,59 @@ func (m Mat) Unpack(buf []byte) {
 	for i, v := range m {
 		v.Unpack(buf[i*len(v) : (i+1)*len(v)])
 	}
+}
+
+func CopyBitToByte(src []byte, dest []byte) {
+	if src == nil {
+		panic("src is nil")
+	}
+	if dest == nil {
+		panic("dest is nil")
+	}
+	if len(src)*8 != len(dest) {
+		panic("src and dest have different lengths")
+	}
+	for i, b := range src {
+		for j := 0; j < 8; j++ {
+			dest[i*8+j] = (b >> uint(j)) & 1
+		}
+	}
+}
+
+func Hash4(initKey, sBytes, rhoBytes, h1Bytes, h2Bytes []byte) {
+	sl, rl, h1l, h2l := len(sBytes), len(rhoBytes), len(h1Bytes), len(h2Bytes)
+	//if sl*8 != N*(Log2Eta+1) {
+	//	panic("sBytes has wrong length")
+	//}
+	//if rl*8 != Lambda {
+	//	panic("rhoBytes has wrong length")
+	//}
+	//if h1l*8 != Lambda {
+	//	panic("h1Bytes has wrong length")
+	//}
+	//if h2l*8 != Lambda {
+	//	panic("h2Bytes has wrong length")
+	//}
+
+	// m = H(initKey)
+	h := sha3.New256()
+	h.Write(initKey)
+	m := h.Sum(nil)
+
+	h = sha3.New512()
+	h.Write(m)
+
+	// totalLen = sl + rl + h1l + h2l
+	totalLen := sl + rl + h1l + h2l
+	totalBytes := make([]byte, totalLen)
+	h.Read(totalBytes)
+
+	// s = totalBytes[:sl]
+	copy(sBytes, totalBytes[:sl])
+	// rho = totalBytes[sl:sl+rl]
+	copy(rhoBytes, totalBytes[sl:sl+rl])
+	// h1 = totalBytes[sl+rl:sl+rl+h1l]
+	copy(h1Bytes, totalBytes[sl+rl:sl+rl+h1l])
+	// h2 = totalBytes[sl+rl+h1l:sl+rl+h1l+h2l]
+	copy(h2Bytes, totalBytes[sl+rl+h1l:sl+rl+h1l+h2l])
 }

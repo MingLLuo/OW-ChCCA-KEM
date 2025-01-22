@@ -143,11 +143,11 @@ func InitKey(rand io.Reader) (*PublicKey, *PrivateKey, *SharedParam, error) {
 	return &pk, &sk, &ss, nil
 }
 
-func NewKey(rand io.Reader, ss SharedParam) (*PublicKey, *PrivateKey, error) {
+func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 	var pk PublicKey
 	var sk PrivateKey
-	pk.sp = &ss
-	sk.sp = &ss
+	pk.sp = sp
+	sk.sp = sp
 
 	seed := make([]byte, SeedSize)
 	_, err := io.ReadFull(rand, seed)
@@ -162,7 +162,7 @@ func NewKey(rand io.Reader, ss SharedParam) (*PublicKey, *PrivateKey, error) {
 	}
 	sk.b = b[0] == 1
 
-	pRing := ss.pRing
+	pRing := sp.pRing
 
 	p := pRing.Modulus()
 	pFloat, _ := p.Float64()
@@ -184,7 +184,7 @@ func NewKey(rand io.Reader, ss SharedParam) (*PublicKey, *PrivateKey, error) {
 	}
 
 	// Calculate AZ_b, polyVecA size n x m, polyVecZbT size lambda x m
-	polyVecA := ss.PolyVecA
+	polyVecA := sp.PolyVecA
 	matAz := InitBigIntMat(N, Lambda)
 	for i := range N {
 		coeffics := InitBigIntVec(M)
@@ -228,7 +228,7 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	ct = make([]byte, CiphertextSize/8)
 
 	// Generate A Lambda Bit Integers
-	r, _ := cryptoRand.Int(io.Reader(nil), big.NewInt(1<<Lambda))
+	r, _ := cryptoRand.Int(cryptoRand.Reader, big.NewInt(1<<Lambda))
 	rBytes := r.Bytes()
 	// (s, rho, h0, h1) = G(r)
 	s, rho, h0, h1 := G(r)
@@ -249,17 +249,17 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 
 	roundP2 := new(big.Int).Rsh(p, 1)
 	// hatH0 = U0^t * s + h0 round(p/2)
-	hatH0 := InitBigIntVec(N)
+	hatH0 := InitBigIntVec(Lambda)
 	matU0T := pk.U0.Transpose()
-	for i := range N {
+	for i := range Lambda {
 		hatH0[i] = BigIntDotProductMod(matU0T[i], s, p)
 		BigIntAddMod(hatH0[i], h0[i], roundP2)
 	}
 
 	// hatH1 = U1^t * s + h1 round(p/2)
-	hatH1 := InitBigIntVec(N)
+	hatH1 := InitBigIntVec(Lambda)
 	matU1T := pk.U1.Transpose()
-	for i := range N {
+	for i := range Lambda {
 		hatH1[i] = BigIntDotProductMod(matU1T[i], s, p)
 		BigIntAddMod(hatH1[i], h1[i], roundP2)
 	}
@@ -401,16 +401,16 @@ func ParseCt(ct []byte) (c0 []byte, c1 []byte, x Vec, hatH0 Vec, hatH1 Vec) {
 	c1 = ct[Lambda/8 : Lambda/4]
 	// x with length of M * Lambda/8 bytes
 	x = InitBigIntVec(M)
-	// hatH0,hatH1 with length of N * Lambda/8 bytes
-	hatH0 = InitBigIntVec(N)
-	hatH1 = InitBigIntVec(N)
+	// hatH0,hatH1 with length of Lambda
+	hatH0 = InitBigIntVec(Lambda)
+	hatH1 = InitBigIntVec(Lambda)
 	for i := range M {
 		x[i].SetBytes(ct[(i+2)*Lambda/8 : (i+2+1)*Lambda/8])
 	}
-	for i := range N {
+	for i := range Lambda {
 		hatH0[i].SetBytes(ct[(M+2+i)*Lambda/8 : (M+2+i+1)*Lambda/8])
 	}
-	for i := range N {
+	for i := range Lambda {
 		hatH1[i].SetBytes(ct[(M+2+N+i)*Lambda/8 : (M+2+N+i+1)*Lambda/8])
 	}
 	return c0, c1, x, hatH0, hatH1
@@ -427,76 +427,32 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 	// total length = N * (log2(eta)+1) + 3 Lambda
 	// When Lambda = 64, len = 4480 * 7 + 3 * 64 = 31552
 	// When Lambda = 16, len = 1024 * 6 + 3 * 16 = 6192
-	var key [64]byte
-	var result [64]byte
 	h = sha3.New512()
 	h.Write(m)
-
-	sFlag := false
-	sCounter := N * (Log2Eta + 1) / 8
 	sBytes := make([]byte, N*(Log2Eta+1)/8)
-	s = InitBigIntVec(N)
-	tmp := make([][]byte, 3)
-	arr := InitBigIntMat(2, Lambda)
-	bitsCount := N*(Log2Eta+1) + 3*Lambda
-	hashedCount := 0
-	for hashedCount < bitsCount {
-		h.Read(key[:])
-		h.Read(result[:])
-		usedResult := 0
-		if !sFlag {
-			if sCounter >= len(result) {
-				copy(sBytes, result[:])
-				hashedCount += N * (Log2Eta + 1)
-				sCounter -= len(result)
-				continue
-			} else {
-				copy(sBytes, result[:sCounter])
-				sFlag = true
-				hashedCount += sCounter * 8
-				sCounter = 0
-				usedResult = sCounter
-			}
-		}
-		for i := range 3 {
-			tmp[i] = make([]byte, Lambda)
-			usedTmp := 0
-			for {
-				if Lambda > len(result)-usedResult {
-					// Refresh if not enough
-					copy(tmp[i], result[usedResult:])
-					h.Write(key[:])
-					h.Read(key[:])
-					h.Read(result[:])
-					usedTmp = len(result) - usedResult
-					usedResult = 0
-				} else {
-					copy(tmp[i], result[usedTmp:Lambda])
-					hashedCount += Lambda * 8
-					usedResult += Lambda
-					break
-				}
-			}
-			if i == 0 {
-				// rho is a big.Int with length of Lambda
-				rho = new(big.Int).SetBytes(tmp[i])
-			} else {
-				for j := range Lambda {
-					arr[i-1][j] = big.NewInt(int64(tmp[i][j]))
-				}
-			}
-		}
-	}
-	h1, h2 = arr[0], arr[1]
-	// Separate sBytes to sBits, then to s[i]
 	sBits := make([]byte, N*(Log2Eta+1))
-	for i := range sBytes {
-		for j := 0; j < 8; j++ {
-			sBits[i*8+j] = (sBytes[i] >> j) & 1
-		}
-	}
+	s = InitBigIntVec(N)
+	rhoBytes := make([]byte, Lambda/8)
+	h1Bytes := make([]byte, Lambda/8)
+	h1Bits := make([]byte, Lambda)
+	h1 = InitBigIntVec(Lambda)
+	h2Bytes := make([]byte, Lambda/8)
+	h2Bits := make([]byte, Lambda)
+	h2 = InitBigIntVec(Lambda)
+
+	Hash4(m, sBytes, rhoBytes, h1Bytes, h2Bytes)
+	CopyBitToByte(sBytes, sBits)
 	for i := range s {
 		s[i].SetBytes(sBits[i*(Log2Eta+1) : (i+1)*(Log2Eta+1)])
+	}
+	rho = new(big.Int).SetBytes(rhoBytes)
+	CopyBitToByte(h1Bytes, h1Bits)
+	for i := range h1 {
+		h1[i].SetInt64(int64(h1Bits[i]))
+	}
+	CopyBitToByte(h2Bytes, h2Bits)
+	for i := range h2 {
+		h2[i].SetInt64(int64(h2Bits[i]))
 	}
 	return s, rho, h1, h2
 }

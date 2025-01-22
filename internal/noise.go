@@ -17,6 +17,9 @@ func SampleD(m int, alpha_ float64, rho *big.Int) Vec {
 	if err != nil {
 		panic(err)
 	}
+	if rho == nil {
+		panic("rho is nil")
+	}
 	p := newRing.Modulus()
 	p_float, _ := p.Float64()
 	d := ring.DiscreteGaussian{Sigma: alpha_, Bound: p_float}

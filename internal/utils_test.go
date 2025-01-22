@@ -51,3 +51,38 @@ func TestVecSumWithMod(t *testing.T) {
 		t.Errorf("sum != 0")
 	}
 }
+
+func TestCopyBitToByte(t *testing.T) {
+	// Test Empty Vec
+	emptyVec := make([]byte, 0)
+	CopyBitToByte(emptyVec, emptyVec)
+
+	vec := make([]byte, 2)
+	for i := range vec {
+		vec[i] = 1
+	}
+	fmt.Print(vec)
+	res := make([]byte, 16)
+	CopyBitToByte(vec, res)
+	fmt.Print(res)
+	for i := range res {
+		if i%8 == 0 {
+			if res[i] != 1 {
+				t.Errorf("res[%d] != 1", i)
+			}
+		}
+	}
+}
+
+func TestHash4(t *testing.T) {
+	b1 := make([]byte, 1)
+	b2 := make([]byte, 2)
+	b3 := make([]byte, 3)
+	b4 := make([]byte, 4)
+	initKey := []byte{0x00, 0x01, 0x02, 0x03}
+	Hash4(initKey, b1, b2, b3, b4)
+	fmt.Printf("b1: %v\n", b1)
+	fmt.Printf("b2: %v\n", b2)
+	fmt.Printf("b3: %v\n", b3)
+	fmt.Printf("b4: %v\n", b4)
+}
