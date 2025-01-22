@@ -1,11 +1,13 @@
 package internal
 
 import (
-	"OW-ChCCA-KEM/internal/sha3"
 	"encoding/binary"
 	"fmt"
-	"github.com/tuneinsight/lattigo/v6/ring"
 	"math/big"
+
+	"OW-ChCCA-KEM/internal/sha3"
+
+	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 func InitPolyVecWithSampler(n int, sampler ring.Sampler) []ring.Poly {

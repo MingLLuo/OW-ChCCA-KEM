@@ -1,11 +1,12 @@
 package internal
 
 import (
-	"OW-ChCCA-KEM/internal/sha3"
 	cryptoRand "crypto/rand"
 	"fmt"
 	"io"
 	"math/big"
+
+	"OW-ChCCA-KEM/internal/sha3"
 
 	"github.com/tuneinsight/lattigo/v6/ring"
 	"github.com/tuneinsight/lattigo/v6/utils/sampling"
@@ -293,7 +294,7 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 }
 
 func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
-	//ct := (c0, c1, x, hatH0, hatH1)
+	// ct := (c0, c1, x, hatH0, hatH1)
 	c0, c1, x, hatH0, hatH1 := ParseCt(ct)
 	p := sk.sp.pRing.Modulus()
 	roundP2 := new(big.Int).Rsh(p, 1)

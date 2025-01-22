@@ -1,8 +1,9 @@
 package owchcca
 
 import (
-	"OW-ChCCA-KEM/internal"
 	cryptoRand "crypto/rand"
+
+	"OW-ChCCA-KEM/internal"
 )
 
 type (

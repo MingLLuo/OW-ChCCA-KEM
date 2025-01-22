@@ -68,7 +68,7 @@ const (
 	N = 512
 	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
 	QLen = 64
-	//M       = 2 * N * QLen
+	// M       = 2 * N * QLen
 	M       = 128
 	Alpha   = 32
 	Eta     = 32

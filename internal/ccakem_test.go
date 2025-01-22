@@ -2,9 +2,10 @@ package internal
 
 import (
 	cryptoRand "crypto/rand"
-	"github.com/tuneinsight/lattigo/v6/ring"
 	"math/big"
 	"testing"
+
+	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 func spChecker(sp *SharedParam, t *testing.T) {
@@ -18,7 +19,7 @@ func spChecker(sp *SharedParam, t *testing.T) {
 		t.Errorf("Expected A[0] size to be %d, got %d", M, len(sp.A[0]))
 	}
 	// Check bit size of pRing
-	//pRing := sp.pRing.M
+	// pRing := sp.pRing.M
 	mod := sp.pRing.Modulus()
 	t.Logf("Modulus bitsize: %d", mod.BitLen())
 
