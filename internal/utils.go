@@ -1,8 +1,10 @@
 package internal
 
 import (
+	cryptoRand "crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math/big"
 
 	"OW-ChCCA-KEM/internal/sha3"
@@ -93,6 +95,20 @@ func InitBigIntMat(n, m int) Mat {
 	return mat
 }
 
+func InitBigIntMatWithRand(n int, m int, rand io.Reader, mod *big.Int) Mat {
+	mat := InitBigIntMat(n, m)
+	for i := range n {
+		for j := range m {
+			var err error
+			mat[i][j], err = cryptoRand.Int(rand, mod)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	return mat
+}
+
 // VecSumWithMod Calculate the sum of a vector of big.Int with modulo
 func VecSumWithMod(vec Vec, mod *big.Int) *big.Int {
 	// Check if mod is 0
@@ -136,27 +152,52 @@ func BigIntDotProductMod(a, b Vec, mod *big.Int) *big.Int {
 	}
 	dot := new(big.Int)
 	for i := range a {
-		BigIntAddMod(dot, new(big.Int).Mul(a[i], b[i]), mod)
+		dot = BigIntAddMod(dot, new(big.Int).Mul(a[i], b[i]), mod)
 	}
 	return dot
 }
 
 // Round Do componentwise rounding of a vector of big.Int t, to get {0,1}^n
-// rounded[i] = 0, closer to 0 than delim,
-func Round(t Vec, delim *big.Int) Vec {
+// rounded[i] = 0, closer to 0 than delim, in mod view
+func Round(t Vec, delim *big.Int, mod *big.Int) Vec {
 	// Check if delim is > 0
 	if delim.Cmp(big.NewInt(0)) <= 0 {
 		panic("delim <= 0")
 	}
 	rounded := InitBigIntVec(len(t))
 	for i, v := range t {
-		toDelim := new(big.Int).Sub(v, delim)
-		if toDelim.Cmp(v) > 0 {
-			// closer to 0 than delim, rounded[i] = 0
-			rounded[i].SetInt64(0)
+		if v.Cmp(delim) > 0 {
+			// 0 | delim | v | mod
+			// toDelim = v - delim
+			// toMod = mod - v
+			toDelim := new(big.Int).Sub(v, delim)
+			toMod := new(big.Int).Sub(mod, v)
+			if toDelim.Cmp(toMod) > 0 {
+				// closer to mod than delim
+				rounded[i].SetInt64(0)
+			} else {
+				rounded[i].SetInt64(1)
+			}
+		} else if v.Cmp(delim) < 0 {
+			// 0 | v | delim | mod
+			// toDelim = delim - v
+			toDelim := new(big.Int).Sub(delim, v)
+			if toDelim.Cmp(v) > 0 {
+				// closer to zero than delim
+				rounded[i].SetInt64(0)
+			} else {
+				rounded[i].SetInt64(1)
+			}
 		} else {
 			rounded[i].SetInt64(1)
 		}
+		//toDelim := new(big.Int).Sub(v, delim)
+		//if toDelim.Cmp(v) > 0 {
+		//	// closer to 0 than delim, rounded[i] = 0
+		//	rounded[i].SetInt64(0)
+		//} else {
+		//	rounded[i].SetInt64(1)
+		//}
 	}
 	return rounded
 }
@@ -266,4 +307,21 @@ func Hash4(initKey, sBytes, rhoBytes, h1Bytes, h2Bytes []byte) {
 	copy(h1Bytes, totalBytes[sl+rl:sl+rl+h1l])
 	// h2 = totalBytes[sl+rl+h1l:sl+rl+h1l+h2l]
 	copy(h2Bytes, totalBytes[sl+rl+h1l:sl+rl+h1l+h2l])
+}
+
+func VecSimplify(vec Vec, mod *big.Int) Vec {
+	simplified := make(Vec, len(vec))
+	for i, v := range vec {
+		simplified[i] = new(big.Int).Mod(v, mod)
+	}
+	return simplified
+}
+
+func BigIntBytesWithSize(b *big.Int, size int) []byte {
+	bytes := b.Bytes()
+	if len(bytes) > size {
+		panic("b is too large")
+	}
+	tmp := make([]byte, size)
+	return b.FillBytes(tmp)
 }

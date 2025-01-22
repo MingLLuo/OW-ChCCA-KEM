@@ -64,7 +64,7 @@ func Name() string {
 
 // Setup generates a shared parameter for the scheme.
 func Setup() *SharedParam {
-	return internal.Setup()
+	return internal.Setup(cryptoRand.Reader)
 }
 
 // GenerateKeyPair generates a public/private key pair using entropy from rand.

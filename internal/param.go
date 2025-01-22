@@ -76,6 +76,23 @@ const (
 	Alpha_  = N * N * M * 32
 )
 
+//
+//const (
+//	SeedSize = 32
+//	Lambda   = 32
+//	K        = Lambda
+//	// sqrt(N) = 32
+//	N = 512
+//	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
+//	QLen = 64
+//	// M       = 2 * N * QLen
+//	M       = 128
+//	Alpha   = 32
+//	Eta     = 32
+//	Log2Eta = 5
+//	Alpha_  = N * N * M * 32
+//)
+
 type Parameters struct {
 	logN uint64
 	qi   []uint64
