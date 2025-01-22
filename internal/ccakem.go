@@ -169,12 +169,9 @@ func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 	samplingPRNG := sampling.PRNG(rand)
 	gaussianSampler := ring.NewGaussianSampler(samplingPRNG, pRing, ring.DiscreteGaussian{Sigma: Alpha_, Bound: pFloat}, false)
 
-	// with m x Lambda, we will transpose later
+	// with Lambda x m, we will transpose later
 	sk.PolyVecZbT = InitPolyVecWithSampler(Lambda, gaussianSampler)
-	sk.Zb = make(Mat, M)
-	for i := range M {
-		sk.Zb[i] = InitBigIntVec(Lambda)
-	}
+	sk.Zb = InitBigIntMat(M, Lambda)
 	for i := range Lambda {
 		coefficsT := InitBigIntVec(M)
 		pRing.PolyToBigint(sk.PolyVecZbT[i], 1, coefficsT)
@@ -343,9 +340,9 @@ func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 	}
 
 	// hatHnb_ = Unb^t * s + hnb round(p/2)
-	hatHnb_ := InitBigIntVec(N)
+	hatHnb_ := InitBigIntVec(Lambda)
 	matUnbT := unb.Transpose()
-	for i := range N {
+	for i := range Lambda {
 		hatHnb_[i] = BigIntDotProductMod(matUnbT[i], s, p)
 		BigIntAddMod(hatHnb_[i], hnb[i], roundP2)
 	}
@@ -405,13 +402,13 @@ func ParseCt(ct []byte) (c0 []byte, c1 []byte, x Vec, hatH0 Vec, hatH1 Vec) {
 	hatH0 = InitBigIntVec(Lambda)
 	hatH1 = InitBigIntVec(Lambda)
 	for i := range M {
-		x[i].SetBytes(ct[(i+2)*Lambda/8 : (i+2+1)*Lambda/8])
+		x[i].SetBytes(ct[(2*Lambda+i*QLen)/8 : (2*Lambda+(i+1)*QLen)/8])
 	}
 	for i := range Lambda {
-		hatH0[i].SetBytes(ct[(M+2+i)*Lambda/8 : (M+2+i+1)*Lambda/8])
+		hatH0[i].SetBytes(ct[(2*Lambda+(M+i)*QLen)/8 : (2*Lambda+(M+i+1)*QLen)/8])
 	}
 	for i := range Lambda {
-		hatH1[i].SetBytes(ct[(M+2+N+i)*Lambda/8 : (M+2+N+i+1)*Lambda/8])
+		hatH1[i].SetBytes(ct[(2*Lambda+(M+Lambda+i)*QLen)/8 : (2*Lambda+(M+Lambda+i+1)*QLen)/8])
 	}
 	return c0, c1, x, hatH0, hatH1
 }

@@ -12,17 +12,19 @@ const (
 
 	// Size of the encapsulated shared key.
 	// c0 + c1 + x + hatH0 + hatH1
-	// InBytes, Lambda/8 + Lambda/8 + M * Lambda/8 + N * Lambda/8 + N * Lambda/8
-	CiphertextSize = Lambda * (2 + M + 2*N)
+	// Lambda + Lambda + M x QLen + Lambda x QLen + Lambda x QLen
+	// InBytes, Lambda/8 + Lambda/8 + M * QLen/8 + N * Lambda/8 + N * Lambda/8
+	CiphertextSize = 2*Lambda + M*QLen + 2*Lambda*QLen
 
 	// Size of a packed public key.
-	PublicKeySize = 32
+	PublicKeySize = UMatrixSize * 2
 
 	// Size of a packed private key.
-	PrivateKeySize = 32
+	PrivateKeySize = MatZbSize + 1
 
 	// Size of a packed pk.U matrix
-	UMatrixSize = N * Lambda * Lambda / 8
+	UMatrixSize = N * Lambda * QLen
+	MatZbSize   = M * Lambda * QLen
 )
 
 //const (
