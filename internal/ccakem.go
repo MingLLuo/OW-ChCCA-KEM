@@ -25,11 +25,10 @@ type SharedParam struct {
 }
 
 type PrivateKey struct {
-	PolyVecZbT []ring.Poly
-	Zb         Mat
-	b          bool
-	sp         *SharedParam
-	pk         *PublicKey
+	Zb Mat
+	b  bool
+	sp *SharedParam
+	pk *PublicKey
 }
 
 type PublicKey struct {
@@ -87,11 +86,11 @@ func InitKey(rand io.Reader) (*PublicKey, *PrivateKey, *SharedParam, error) {
 	gaussianSampler := ring.NewGaussianSampler(samplingPRNG, pRing, ring.DiscreteGaussian{Sigma: Alpha_, Bound: pFloat}, false)
 
 	// with m x Lambda, we will transpose later
-	sk.PolyVecZbT = InitPolyVecWithSampler(Lambda, gaussianSampler)
+	PolyVecZbT := InitPolyVecWithSampler(Lambda, gaussianSampler)
 	sk.Zb = InitBigIntMat(M, Lambda)
 	for i := range Lambda {
 		coefficsT := InitBigIntVec(M)
-		pRing.PolyToBigint(sk.PolyVecZbT[i], 1, coefficsT)
+		pRing.PolyToBigint(PolyVecZbT[i], 1, coefficsT)
 		for j := range M {
 			sk.Zb[j][i] = coefficsT[j]
 		}
@@ -109,7 +108,7 @@ func InitKey(rand io.Reader) (*PublicKey, *PrivateKey, *SharedParam, error) {
 		tmpPoly := pRing.NewPoly()
 		for j := range Lambda {
 			// Az[i][j] = row i of A * Column j of Zb = Sum(polyVecA[i] * polyVecZbT[j])
-			pRing.MulCoeffsBarrett(polyVecA[i], sk.PolyVecZbT[j], tmpPoly)
+			pRing.MulCoeffsBarrett(polyVecA[i], PolyVecZbT[j], tmpPoly)
 			pRing.PolyToBigint(tmpPoly, 1, coeffics)
 			matAz[i][j] = VecSumWithMod(coeffics, p)
 		}
@@ -163,11 +162,11 @@ func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 	gaussianSampler := ring.NewGaussianSampler(samplingPRNG, pRing, ring.DiscreteGaussian{Sigma: Alpha, Bound: pFloat}, false)
 
 	// with Lambda x m, we will transpose later
-	sk.PolyVecZbT = InitPolyVecWithSampler(Lambda, gaussianSampler)
+	PolyVecZbT := InitPolyVecWithSampler(Lambda, gaussianSampler)
 	sk.Zb = InitBigIntMat(M, Lambda)
 	for i := range Lambda {
 		coefficsT := InitBigIntVec(M)
-		pRing.PolyToBigint(sk.PolyVecZbT[i], 1, coefficsT)
+		pRing.PolyToBigint(PolyVecZbT[i], 1, coefficsT)
 		for j := range M {
 			sk.Zb[j][i] = coefficsT[j]
 		}
@@ -181,7 +180,7 @@ func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 		tmpPoly := pRing.NewPoly()
 		for j := range Lambda {
 			// Az[i][j] = row i of A * Column j of Zb = Sum(polyVecA[i] * polyVecZbT[j])
-			pRing.MulCoeffsBarrett(polyVecA[i], sk.PolyVecZbT[j], tmpPoly)
+			pRing.MulCoeffsBarrett(polyVecA[i], PolyVecZbT[j], tmpPoly)
 			pRing.PolyToBigint(tmpPoly, 1, coeffics)
 			matAz[i][j] = VecSumWithMod(coeffics, p)
 		}
@@ -459,17 +458,113 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 }
 
 func (pk *PublicKey) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, PublicKeySize)
+	buf := make([]byte, PublicKeySize/8)
 	pk.Pack(buf)
 	return buf, nil
 }
 
+func (pk *PublicKey) UnmarshalBinary(buf []byte, sp *SharedParam) error {
+	if len(buf) != PublicKeySize/8 {
+		return fmt.Errorf("invalid length, expected %d, got %d", PublicKeySize/8, len(buf))
+	}
+	pk.UnPack(buf, sp)
+	return nil
+}
+
 func (pk *PublicKey) Pack(buf []byte) {
-	if len(buf) != PublicKeySize {
+	if len(buf) != PublicKeySize/8 {
 		panic("buf must be of length PublicKeySize")
 	}
 
 	pk.U0.Pack(buf)
 	pk.U1.Pack(buf[UMatrixSize:])
-	// TODO
+}
+
+func (pk *PublicKey) UnPack(buf []byte, sp *SharedParam) {
+	if len(buf) != PublicKeySize/8 {
+		panic("buf must be of length PublicKeySize")
+	}
+
+	pk.U0 = InitBigIntMat(N, Lambda)
+	pk.U1 = InitBigIntMat(N, Lambda)
+
+	pk.U0.Unpack(buf)
+	pk.U1.Unpack(buf[UMatrixSize:])
+	pk.sp = sp
+}
+
+func (sk *PrivateKey) MarshalBinary() ([]byte, error) {
+	buf := make([]byte, PrivateKeySize/8)
+	sk.Pack(buf)
+	return buf, nil
+}
+
+func (sk *PrivateKey) UnmarshalBinary(buf []byte, sp *SharedParam, pk *PublicKey) error {
+	if len(buf) != PrivateKeySize/8 {
+		return fmt.Errorf("invalid length, expected %d, got %d", PrivateKeySize/8, len(buf))
+	}
+	sk.UnPack(buf, sp, pk)
+	return nil
+}
+
+func (sk *PrivateKey) Pack(buf []byte) {
+	if len(buf) != PrivateKeySize/8 {
+		panic("buf must be of length PrivateKeySize/8")
+	}
+
+	sk.Zb.Pack(buf)
+	buf[len(buf)-1] = byte(1)
+}
+
+func (sk *PrivateKey) UnPack(buf []byte, sp *SharedParam, pk *PublicKey) {
+	if len(buf) != PrivateKeySize/8 {
+		panic("buf must be of length PrivateKeySize")
+	}
+
+	sk.Zb = InitBigIntMat(M, Lambda)
+	sk.Zb.Unpack(buf)
+	sk.b = buf[len(buf)-1] == 1
+	sk.sp = sp
+	sk.pk = pk
+}
+
+func (sp *SharedParam) MarshalBinary() ([]byte, error) {
+	// TODO add length
+	buf := make([]byte, 0)
+	sp.Pack(buf)
+	return buf, nil
+}
+
+func (sp *SharedParam) UnmarshalBinary(buf []byte) error {
+	sp.UnPack(buf)
+	return nil
+}
+
+func (sp *SharedParam) Pack(buf []byte) {
+	for i := range N {
+		bytes, err := sp.PolyVecA[i].MarshalBinary()
+		if err != nil {
+			panic(err)
+		}
+		for j := range bytes {
+			buf = append(buf, bytes[j])
+		}
+	}
+}
+
+func (sp *SharedParam) UnPack(buf []byte) {
+	//if len(buf) != SharedParamSize/8 {
+	//	panic("buf must be of length SharedParamSize")
+	//}
+
+	sp.A = InitBigIntMat(N, M)
+	sp.pRing, _ = ring.NewRing(M, moduli)
+	sp.PolyVecA = make([]ring.Poly, N)
+	for i := range N {
+		err := sp.PolyVecA[i].UnmarshalBinary(buf[i*(len(buf)/N) : (i+1)*(len(buf)/N)])
+		if err != nil {
+			panic(err)
+		}
+		sp.pRing.PolyToBigint(sp.PolyVecA[i], 1, sp.A[i])
+	}
 }

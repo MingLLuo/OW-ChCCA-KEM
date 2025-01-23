@@ -10,6 +10,8 @@ const (
 	// Size of the established shared key.
 	SharedKeySize = Lambda
 
+	SharedParamSize = N * M * QLen
+
 	// Size of the encapsulated shared key.
 	// c0 + c1 + x + hatH0 + hatH1
 	// Lambda + Lambda + M x QLen + Lambda x QLen + Lambda x QLen
@@ -19,8 +21,8 @@ const (
 	// Size of a packed public key.
 	PublicKeySize = UMatrixSize * 2
 
-	// Size of a packed private key.
-	PrivateKeySize = MatZbSize + 1
+	// Size of a packed private key, with one bit to be a byte aligned.
+	PrivateKeySize = MatZbSize + 8
 
 	// Size of a packed pk.U matrix
 	UMatrixSize = N * Lambda * QLen

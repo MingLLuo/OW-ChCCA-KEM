@@ -231,26 +231,26 @@ func (v Vec) Equal(x Vec) bool {
 }
 
 func (v Vec) Pack(buf []byte) {
-	for i, b := range buf {
-		v[i].SetUint64(uint64(b))
+	for i := range v {
+		v[i].FillBytes(buf[i*QLen/8 : (i+1)*QLen/8])
 	}
 }
 
 func (v Vec) Unpack(buf []byte) {
-	for i, b := range buf {
-		v[i].SetUint64(uint64(b))
+	for i := range v {
+		v[i].SetBytes(buf[i*QLen/8 : (i+1)*QLen/8])
 	}
 }
 
 func (m Mat) Pack(buf []byte) {
 	for i, v := range m {
-		v.Pack(buf[i*len(v) : (i+1)*len(v)])
+		v.Pack(buf[i*len(v)*QLen/8 : (i+1)*len(v)*QLen/8])
 	}
 }
 
 func (m Mat) Unpack(buf []byte) {
 	for i, v := range m {
-		v.Unpack(buf[i*len(v) : (i+1)*len(v)])
+		v.Unpack(buf[i*len(v)*QLen/8 : (i+1)*len(v)*QLen/8])
 	}
 }
 

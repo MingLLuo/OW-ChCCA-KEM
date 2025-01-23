@@ -102,22 +102,22 @@ func Decapsulate(sk PrivateKey, ct []byte) ([]byte, error) {
 
 // MarshalBinaryPublicKey marshals a PublicKey into a binary form.
 func MarshalBinaryPublicKey(pk PublicKey) ([]byte, error) {
-	return nil, nil
+	return pk.MarshalBinary()
 }
 
 // MarshalBinaryPrivateKey marshals a PrivateKey into a binary form.
 func MarshalBinaryPrivateKey(sk PrivateKey) ([]byte, error) {
-	return nil, nil
+	return sk.MarshalBinary()
 }
 
 // UnmarshalBinaryPublicKey Unmarshals a PublicKey from the provided buffer.
-func UnmarshalBinaryPublicKey([]byte) (PublicKey, error) {
-	return PublicKey{}, nil
+func UnmarshalBinaryPublicKey(buf []byte, sp SharedParam) (PublicKey, error) {
+	return UnmarshalBinaryPublicKey(buf, sp)
 }
 
 // UnmarshalBinaryPrivateKey Unmarshals a PrivateKey from the provided buffer.
-func UnmarshalBinaryPrivateKey([]byte) (PrivateKey, error) {
-	return PrivateKey{}, nil
+func UnmarshalBinaryPrivateKey(buf []byte, pk PublicKey, sp SharedParam) (PrivateKey, error) {
+	return UnmarshalBinaryPrivateKey(buf, pk, sp)
 }
 
 // CiphertextSize Size of encapsulated keys.
