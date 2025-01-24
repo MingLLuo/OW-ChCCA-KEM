@@ -74,4 +74,10 @@ func TestBytesDecoding(t *testing.T) {
 			t.Errorf("Expected ss1 and ss2 to be equal")
 		}
 	}
+
+	// Size output
+	t.Logf("Shared key size: %d Bits", len(ss1)*8)
+	t.Logf("Public key size: %d Bytes", len(pkBytes))
+	t.Logf("Private key size: %d Bytes", len(skBytes))
+	t.Logf("Shared param size: %d Bytes", len(spBytes))
 }

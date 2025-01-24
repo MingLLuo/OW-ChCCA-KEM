@@ -77,13 +77,12 @@ func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 		return nil, nil, err
 	}
 
-	// generate single bit b
 	b := make([]byte, 1)
 	if _, err := io.ReadFull(rand, b); err != nil {
 		return nil, nil, err
 	}
 	sk.b = b[0] == 1
-	// with Lambda x m, we will transpose later
+
 	PolyVecZbT := InitPolyVecWithSampler(Lambda, gaussianSampler)
 	sk.Zb = InitBigIntMat(M, Lambda)
 	for i := range Lambda {
@@ -146,6 +145,7 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	s, rho, h0, h1 := G(r)
 	s = VecSimplify(s, p)
 	e := SampleD(M, Alpha_, rho)
+
 	// x := A^t * s + e
 	matA := pk.sp.A
 	x := InitBigIntVec(M)
@@ -156,27 +156,11 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 		// x[i] += A^t[i] * s
 		x[i] = BigIntAddMod(x[i], BigIntDotProductMod(matAt[i], s, p), p)
 	}
-	roundP2 := new(big.Int).Rsh(p, 1)
 
 	// hatH0 = U0^t * s + h0 * round(p/2)
-	hatH0 := InitBigIntVec(Lambda)
-	u0Ts := InitBigIntVec(Lambda)
-	matU0T := pk.U0.Transpose()
-	for i := range Lambda {
-		tmp := new(big.Int).Mul(h0[i], roundP2)
-		u0Ts[i] = BigIntDotProductMod(matU0T[i], s, p)
-		hatH0[i] = BigIntAddMod(u0Ts[i], tmp, p)
-	}
-
+	hatH0 := HatH(h0, s, pk.U0, p)
 	// hatH1 = U1^t * s + h1 round(p/2)
-	hatH1 := InitBigIntVec(Lambda)
-	u1Ts := InitBigIntVec(Lambda)
-	matU1T := pk.U1.Transpose()
-	for i := range Lambda {
-		tmp := new(big.Int).Mul(h1[i], roundP2)
-		u1Ts[i] = BigIntDotProductMod(matU1T[i], s, p)
-		hatH1[i] = BigIntAddMod(u1Ts[i], tmp, p)
-	}
+	hatH1 := HatH(h1, s, pk.U1, p)
 
 	// hatK0 = H(x,hatH0,h0), C0 = hatK0 xor R
 	hatK0 := hash3(x, hatH0, h0)
@@ -220,7 +204,6 @@ func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 		cb, cnb = c0, c1
 		_, unb = sk.pk.U0, sk.pk.U1
 	}
-	// hb_ = Round(hatHb - Zb^t * x)
 
 	// Zb^t * x, (Lambda x M) * (M x 1) = Lambda x 1
 	ZbTx := InitBigIntVec(Lambda)
@@ -233,6 +216,7 @@ func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 	for i := range Lambda {
 		round_[i] = BigIntSubMod(hatHb[i], ZbTx[i], p)
 	}
+	// hb_ = Round(hatHb - Zb^t * x)
 	hb_ := Round(round_, roundP2, p)
 	// hatKb = H(x, hatHb, hb_), R = cb xor hatKb
 	hatKb := hash3(x, hatHb, hb_)
@@ -252,14 +236,7 @@ func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 	}
 
 	// hatHnb_ = Unb^t * s + hnb round(p/2)
-	hatHnb_ := InitBigIntVec(Lambda)
-	unbTs := InitBigIntVec(Lambda)
-	matUnbT := unb.Transpose()
-	for i := range Lambda {
-		tmp := new(big.Int).Mul(hnb[i], roundP2)
-		unbTs[i] = BigIntDotProductMod(matUnbT[i], s, p)
-		hatHnb_[i] = BigIntAddMod(unbTs[i], tmp, p)
-	}
+	hatHnb_ := HatH(hnb, s, unb, p)
 	// hatKnb = H(x,hatHnb_,hnb)
 	hatKnb := hash3(x, hatHnb_, hnb)
 
@@ -289,6 +266,20 @@ func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 		return nil, fmt.Errorf("decap failed, check hatHnb = hatHnb_ failed")
 	}
 	return r_, nil
+}
+
+// HatH HatHb = Ub^T * s + round(p/2) * hb
+func HatH(h Vec, s Vec, matU Mat, p *big.Int) Vec {
+	roundP2 := new(big.Int).Rsh(p, 1)
+	hatH := InitBigIntVec(Lambda)
+	uTs := InitBigIntVec(Lambda)
+	matUT := matU.Transpose()
+	for i := range Lambda {
+		tmp := new(big.Int).Mul(h[i], roundP2)
+		uTs[i] = BigIntDotProductMod(matUT[i], s, p)
+		hatH[i] = BigIntAddMod(uTs[i], tmp, p)
+	}
+	return hatH
 }
 
 func hash3(x Vec, hatHb Vec, hb Vec) []byte {
@@ -330,10 +321,7 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 	h := sha3.New256()
 	h.Write(seed.Bytes())
 	m := h.Sum(nil)
-	// (s, rho, h1, h2) = G(m)
 	// total length = N * (log2(eta)+1) + 3 Lambda
-	// When Lambda = 64, len = 4480 * 7 + 3 * 64 = 31552
-	// When Lambda = 16, len = 1024 * 6 + 3 * 16 = 6192
 	h = sha3.New512()
 	h.Write(m)
 	sBytes := make([]byte, N*(Log2Eta+1)/8)
@@ -358,19 +346,18 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 
 	CopyBitToByte(h1Bytes, h1Bits)
 	for i := range h1 {
-		h1[i].SetInt64(int64(h1Bits[i]))
+		h1[i].SetBytes(h1Bits[i : i+1])
 	}
 
 	CopyBitToByte(h2Bytes, h2Bits)
 	for i := range h2 {
-		h2[i].SetInt64(int64(h2Bits[i]))
+		h2[i].SetBytes(h2Bits[i : i+1])
 	}
 	return s, rho, h1, h2
 }
 
 func (pk *PublicKey) MarshalBinary() ([]byte, error) {
-	buf := pk.Pack()
-	return buf, nil
+	return pk.Pack(), nil
 }
 
 func (pk *PublicKey) UnmarshalBinary(buf []byte, sp *SharedParam) error {
@@ -404,8 +391,7 @@ func (pk *PublicKey) UnPack(buf []byte, sp *SharedParam) {
 }
 
 func (sk *PrivateKey) MarshalBinary() ([]byte, error) {
-	buf := sk.Pack()
-	return buf, nil
+	return sk.Pack(), nil
 }
 
 func (sk *PrivateKey) UnmarshalBinary(buf []byte, sp *SharedParam, pk *PublicKey) error {
@@ -442,8 +428,7 @@ func (sk *PrivateKey) UnPack(buf []byte, sp *SharedParam, pk *PublicKey) {
 }
 
 func (sp *SharedParam) MarshalBinary() ([]byte, error) {
-	buf := sp.Pack()
-	return buf, nil
+	return sp.Pack(), nil
 }
 
 func (sp *SharedParam) UnmarshalBinary(buf []byte) error {

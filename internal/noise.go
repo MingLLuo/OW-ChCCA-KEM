@@ -19,17 +19,15 @@ func SampleD(m int, alpha_ float64, rho *big.Int) Vec {
 		panic("rho is nil")
 	}
 	p := newRing.Modulus()
-	p_float, _ := p.Float64()
-	d := ring.DiscreteGaussian{Sigma: alpha_, Bound: p_float}
+	pFloat, _ := p.Float64()
+	d := ring.DiscreteGaussian{Sigma: alpha_, Bound: pFloat}
 	prng, err := sampling.NewKeyedPRNG(rho.Bytes())
 	sampler, err := ring.NewSampler(prng, newRing, d, false)
 	if err != nil {
 		panic(err)
 	}
 	pol := sampler.ReadNew()
-	// convert to []big.Int
 	coeffs := InitBigIntVec(m)
 	newRing.PolyToBigint(pol, 1, coeffs)
-	//coeffs = InitBigIntVec(m)
 	return coeffs
 }
