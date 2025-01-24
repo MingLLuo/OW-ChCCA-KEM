@@ -11,50 +11,6 @@ type (
 	Mat         = internal.Mat
 )
 
-// A Scheme represents a specific instance of a KEM.
-type Scheme interface {
-	// Name of the scheme
-	Name() string
-
-	// GenerateKeyPair creates a new key pair.
-	GenerateKeyPair() (*PublicKey, *PrivateKey, *SharedParam, error)
-
-	// GenerateNewKeyPair creates a new key pair from a shared key.
-	GenerateNewKeyPair(ss SharedParam) (*PublicKey, *PrivateKey, error)
-
-	// Encapsulate generates a shared key ss for the public key and
-	// encapsulates it into a ciphertext ct.
-	Encapsulate(pk PublicKey) (ct, ss []byte, err error)
-
-	// Decapsulate Returns the shared key encapsulated in ciphertext ct for the
-	// private key sk.
-	Decapsulate(sk PrivateKey, ct []byte) ([]byte, error)
-
-	// MarshalBinaryPublicKey marshals a PublicKey into a binary form.
-	MarshalBinaryPublicKey(pk PublicKey) ([]byte, error)
-
-	// MarshalBinaryPrivateKey marshals a PrivateKey into a binary form.
-	MarshalBinaryPrivateKey(sk PrivateKey) ([]byte, error)
-
-	// UnmarshalBinaryPublicKey Unmarshals a PublicKey from the provided buffer.
-	UnmarshalBinaryPublicKey([]byte) (PublicKey, error)
-
-	// UnmarshalBinaryPrivateKey Unmarshals a PrivateKey from the provided buffer.
-	UnmarshalBinaryPrivateKey([]byte) (PrivateKey, error)
-
-	// CiphertextSize Size of encapsulated keys.
-	CiphertextSize() int
-
-	// SharedKeySize Size of established shared keys.
-	SharedKeySize() int
-
-	// PrivateKeySize Size of packed private keys.
-	PrivateKeySize() int
-
-	// PublicKeySize Size of packed public keys.
-	PublicKeySize() int
-}
-
 var Random = internal.RandReader
 
 // Name of the scheme
@@ -98,6 +54,11 @@ func Decapsulate(sk PrivateKey, ct []byte) ([]byte, error) {
 	return sk.DecapsulateTo(ct)
 }
 
+// MarshalSharedParam marshals a SharedParam into a binary form.
+func MarshalSharedParam(sp SharedParam) ([]byte, error) {
+	return sp.MarshalBinary()
+}
+
 // MarshalBinaryPublicKey marshals a PublicKey into a binary form.
 func MarshalBinaryPublicKey(pk PublicKey) ([]byte, error) {
 	return pk.MarshalBinary()
@@ -108,14 +69,25 @@ func MarshalBinaryPrivateKey(sk PrivateKey) ([]byte, error) {
 	return sk.MarshalBinary()
 }
 
+// UnmarshalSharedParam Unmarshals a SharedParam from the provided buffer.
+func UnmarshalSharedParam(buf []byte) (SharedParam, error) {
+	var sp SharedParam
+	err := sp.UnmarshalBinary(buf)
+	return sp, err
+}
+
 // UnmarshalBinaryPublicKey Unmarshals a PublicKey from the provided buffer.
 func UnmarshalBinaryPublicKey(buf []byte, sp SharedParam) (PublicKey, error) {
-	return UnmarshalBinaryPublicKey(buf, sp)
+	var pk PublicKey
+	err := pk.UnmarshalBinary(buf, &sp)
+	return pk, err
 }
 
 // UnmarshalBinaryPrivateKey Unmarshals a PrivateKey from the provided buffer.
 func UnmarshalBinaryPrivateKey(buf []byte, pk PublicKey, sp SharedParam) (PrivateKey, error) {
-	return UnmarshalBinaryPrivateKey(buf, pk, sp)
+	var sk PrivateKey
+	err := sk.UnmarshalBinary(buf, &sp, &pk)
+	return sk, err
 }
 
 // CiphertextSize Size of encapsulated keys.

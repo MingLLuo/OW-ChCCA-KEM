@@ -269,10 +269,12 @@ func (v Vec) Equal(x Vec) bool {
 	return true
 }
 
-func (v Vec) Pack(buf []byte) {
+func (v Vec) Pack() (buf []byte) {
+	buf = make([]byte, len(v)*QLen/8)
 	for i := range v {
 		v[i].FillBytes(buf[i*QLen/8 : (i+1)*QLen/8])
 	}
+	return buf
 }
 
 func (v Vec) Unpack(buf []byte) {
@@ -281,10 +283,11 @@ func (v Vec) Unpack(buf []byte) {
 	}
 }
 
-func (m Mat) Pack(buf []byte) {
-	for i, v := range m {
-		v.Pack(buf[i*len(v)*QLen/8 : (i+1)*len(v)*QLen/8])
+func (m Mat) Pack() (buf []byte) {
+	for _, v := range m {
+		buf = append(buf, v.Pack()...)
 	}
+	return buf
 }
 
 func (m Mat) Unpack(buf []byte) {

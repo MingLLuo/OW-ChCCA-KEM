@@ -31,7 +31,7 @@ const (
 
 const (
 	SeedSize = 32
-	Lambda   = 16
+	Lambda   = 64
 	sqrtN    = 4
 	Log2N    = 4
 	Log2Eta  = 5
@@ -40,7 +40,7 @@ const (
 	QMin     = N * N * N * N * N * N
 	QMax     = N * QMin
 	//QLen = Log2N * 6
-	QLen = 16
+	QLen = 24
 	// M       = 2 * N * QLen
 	M      = 16
 	Alpha  = sqrtN
@@ -56,7 +56,7 @@ type Parameters struct {
 
 var testParameters = Parameters{
 	//10, Qi60[len(Qi60)-1:], Pi60[len(Pi60)-1:],
-	10, Qi60[len(Qi60)-1:], []uint64{257},
+	10, Qi60[len(Qi60)-1:], []uint64{8397313},
 }
 
 // Qi60 are the first [0:32] 61-bit close to 2^{62} NTT-friendly primes for N up to 2^{17}

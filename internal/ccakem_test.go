@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -237,4 +238,5 @@ func TestKEMResult(t *testing.T) {
 			}
 		}
 	}
+	fmt.Printf("ss: %v\n", ss)
 }

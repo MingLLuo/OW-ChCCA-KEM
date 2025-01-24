@@ -140,7 +140,7 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	pRing := pk.sp.pRing
 	p := pRing.Modulus()
 	// Generate A Lambda Bit Integers
-	r, _ := cryptoRand.Int(RandReader, big.NewInt(1<<Lambda))
+	r, _ := cryptoRand.Int(RandReader, new(big.Int).Lsh(big.NewInt(1), Lambda))
 	rBytes := r.Bytes()
 	// (s, rho, h0, h1) = G(r)
 	s, rho, h0, h1 := G(r)
@@ -369,8 +369,7 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 }
 
 func (pk *PublicKey) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, PublicKeySize/8)
-	pk.Pack(buf)
+	buf := pk.Pack()
 	return buf, nil
 }
 
@@ -382,13 +381,13 @@ func (pk *PublicKey) UnmarshalBinary(buf []byte, sp *SharedParam) error {
 	return nil
 }
 
-func (pk *PublicKey) Pack(buf []byte) {
+func (pk *PublicKey) Pack() (buf []byte) {
+	buf = append(buf, pk.U0.Pack()...)
+	buf = append(buf, pk.U1.Pack()...)
 	if len(buf) != PublicKeySize/8 {
 		panic("buf must be of length PublicKeySize")
 	}
-
-	pk.U0.Pack(buf)
-	pk.U1.Pack(buf[UMatrixSize:])
+	return buf
 }
 
 func (pk *PublicKey) UnPack(buf []byte, sp *SharedParam) {
@@ -400,13 +399,12 @@ func (pk *PublicKey) UnPack(buf []byte, sp *SharedParam) {
 	pk.U1 = InitBigIntMat(N, Lambda)
 
 	pk.U0.Unpack(buf)
-	pk.U1.Unpack(buf[UMatrixSize:])
+	pk.U1.Unpack(buf[UMatrixSize/8:])
 	pk.sp = sp
 }
 
 func (sk *PrivateKey) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, PrivateKeySize/8)
-	sk.Pack(buf)
+	buf := sk.Pack()
 	return buf, nil
 }
 
@@ -418,13 +416,17 @@ func (sk *PrivateKey) UnmarshalBinary(buf []byte, sp *SharedParam, pk *PublicKey
 	return nil
 }
 
-func (sk *PrivateKey) Pack(buf []byte) {
+func (sk *PrivateKey) Pack() (buf []byte) {
+	buf = append(buf, sk.Zb.Pack()...)
+	if sk.b {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	if len(buf) != PrivateKeySize/8 {
 		panic("buf must be of length PrivateKeySize/8")
 	}
-
-	sk.Zb.Pack(buf)
-	buf[len(buf)-1] = byte(1)
+	return buf
 }
 
 func (sk *PrivateKey) UnPack(buf []byte, sp *SharedParam, pk *PublicKey) {
@@ -440,9 +442,7 @@ func (sk *PrivateKey) UnPack(buf []byte, sp *SharedParam, pk *PublicKey) {
 }
 
 func (sp *SharedParam) MarshalBinary() ([]byte, error) {
-	// TODO add length
-	buf := make([]byte, 0)
-	sp.Pack(buf)
+	buf := sp.Pack()
 	return buf, nil
 }
 
@@ -451,23 +451,18 @@ func (sp *SharedParam) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
-func (sp *SharedParam) Pack(buf []byte) {
+func (sp *SharedParam) Pack() (buf []byte) {
 	for i := range N {
 		bytes, err := sp.PolyVecA[i].MarshalBinary()
 		if err != nil {
 			panic(err)
 		}
-		for j := range bytes {
-			buf = append(buf, bytes[j])
-		}
+		buf = append(buf, bytes...)
 	}
+	return buf
 }
 
 func (sp *SharedParam) UnPack(buf []byte) {
-	//if len(buf) != SharedParamSize/8 {
-	//	panic("buf must be of length SharedParamSize")
-	//}
-
 	sp.A = InitBigIntMat(N, M)
 	sp.pRing, _ = ring.NewRing(M, moduli)
 	sp.PolyVecA = make([]ring.Poly, N)
