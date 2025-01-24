@@ -37,6 +37,10 @@ type PublicKey struct {
 	sp *SharedParam
 }
 
+var RandReader = cryptoRand.Reader
+
+//var RandReader = io.Reader(NewSeededReader(1))
+
 // Setup generates n x m BigInt matrix for the key generation, filled with random values
 func Setup(rand io.Reader) *SharedParam {
 	var ss SharedParam
@@ -54,93 +58,19 @@ func Setup(rand io.Reader) *SharedParam {
 	return &ss
 }
 
-// InitKey This method will Set up First, then generate a key pair
-// TODO: Use Setup then NewKey
-func InitKey(rand io.Reader) (*PublicKey, *PrivateKey, *SharedParam, error) {
-	var pk PublicKey
-	var sk PrivateKey
-	var sp SharedParam
-
-	seed := make([]byte, SeedSize)
-	if _, err := io.ReadFull(rand, seed); err != nil {
-		return nil, nil, nil, err
-	}
-
-	// generate single bit b
-	b := make([]byte, 1)
-	if _, err := io.ReadFull(rand, b); err != nil {
-		return nil, nil, nil, err
-	}
-	sk.b = b[0] == 1
-
-	// Z_b <- Gaussian Z_q, alpha with m x lambda
-	pRing, err := ring.NewRing(M, moduli)
-	if err != nil {
-		panic(err)
-	}
-	sp.pRing = pRing
-	p := pRing.Modulus()
-	pFloat, _ := p.Float64()
-
-	samplingPRNG := sampling.PRNG(rand)
-	gaussianSampler := ring.NewGaussianSampler(samplingPRNG, pRing, ring.DiscreteGaussian{Sigma: Alpha_, Bound: pFloat}, false)
-
-	// with m x Lambda, we will transpose later
-	PolyVecZbT := InitPolyVecWithSampler(Lambda, gaussianSampler)
-	sk.Zb = InitBigIntMat(M, Lambda)
-	for i := range Lambda {
-		coefficsT := InitBigIntVec(M)
-		pRing.PolyToBigint(PolyVecZbT[i], 1, coefficsT)
-		for j := range M {
-			sk.Zb[j][i] = coefficsT[j]
-		}
-	}
-
-	// Generate matrix A in Z_q n x m in random, size of A will be n x m
-	// in the following, I will simplify the process
-	// 1. use each row of A as a polynomial, multiply with Z_b to get a Vector
-	// 2. for each row, calculate the sum mod q to get a Vector(Az_b)
-	uniformSampler := ring.NewUniformSampler(samplingPRNG, pRing)
-	matAz := InitBigIntMat(N, Lambda)
-	polyVecA := InitPolyVecWithSampler(N, uniformSampler)
-	for i := range N {
-		coeffics := InitBigIntVec(M)
-		tmpPoly := pRing.NewPoly()
-		for j := range Lambda {
-			// Az[i][j] = row i of A * Column j of Zb = Sum(polyVecA[i] * polyVecZbT[j])
-			pRing.MulCoeffsBarrett(polyVecA[i], PolyVecZbT[j], tmpPoly)
-			pRing.PolyToBigint(tmpPoly, 1, coeffics)
-			matAz[i][j] = VecSumWithMod(coeffics, p)
-		}
-	}
-	// generate matrix Z_q n x lambda
-	matZq := InitBigIntMatWithRand(N, Lambda, rand, p)
-	if sk.b {
-		pk.U0 = matAz
-		pk.U1 = matZq
-	} else {
-		pk.U0 = matZq
-		pk.U1 = matZq
-	}
-
-	// generate shared key
-	sp.PolyVecA = polyVecA
-	sp.A = InitBigIntMat(N, M)
-	for i := range N {
-		pRing.PolyToBigint(polyVecA[i], 1, sp.A[i])
-	}
-	pk.sp = &sp
-	sk.sp = &sp
-	sk.pk = &pk
-	return &pk, &sk, &sp, nil
-}
-
 func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 	var pk PublicKey
 	var sk PrivateKey
 	pk.sp = sp
 	sk.sp = sp
 
+	pRing := sp.pRing
+	p := pRing.Modulus()
+	pFloat, _ := p.Float64()
+	samplingPRNG := sampling.PRNG(rand)
+	gaussianSampler := ring.NewGaussianSampler(samplingPRNG, pRing, ring.DiscreteGaussian{Sigma: Alpha, Bound: pFloat}, false)
+
+	// Simple Rand Check
 	seed := make([]byte, SeedSize)
 	_, err := io.ReadFull(rand, seed)
 	if err != nil {
@@ -153,14 +83,6 @@ func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 		return nil, nil, err
 	}
 	sk.b = b[0] == 1
-
-	pRing := sp.pRing
-
-	p := pRing.Modulus()
-	pFloat, _ := p.Float64()
-	samplingPRNG := sampling.PRNG(rand)
-	gaussianSampler := ring.NewGaussianSampler(samplingPRNG, pRing, ring.DiscreteGaussian{Sigma: Alpha, Bound: pFloat}, false)
-
 	// with Lambda x m, we will transpose later
 	PolyVecZbT := InitPolyVecWithSampler(Lambda, gaussianSampler)
 	sk.Zb = InitBigIntMat(M, Lambda)
@@ -188,15 +110,25 @@ func NewKey(rand io.Reader, sp *SharedParam) (*PublicKey, *PrivateKey, error) {
 
 	matZq := InitBigIntMatWithRand(N, Lambda, rand, p)
 	if sk.b {
+		pk.U1 = matAz
+		pk.U0 = matZq
+	} else {
 		pk.U0 = matAz
 		pk.U1 = matZq
-	} else {
-		pk.U0 = matZq
-		pk.U1 = matAz
 	}
 	sk.pk = &pk
 
 	return &pk, &sk, nil
+}
+
+// InitKey This method will Set up First, then generate a key pair
+func InitKey(rand io.Reader) (*PublicKey, *PrivateKey, *SharedParam, error) {
+	sp := Setup(rand)
+	pk, sk, err := NewKey(rand, sp)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return pk, sk, sp, nil
 }
 
 func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
@@ -204,23 +136,18 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 	if _, err := cryptoRand.Read(seed); err != nil {
 		return nil, nil, err
 	}
-	// generate shared key
 
+	pRing := pk.sp.pRing
+	p := pRing.Modulus()
 	// Generate A Lambda Bit Integers
-	r, _ := cryptoRand.Int(cryptoRand.Reader, big.NewInt(1<<Lambda))
-	fmt.Printf("Encap r: %v\n", r)
+	r, _ := cryptoRand.Int(RandReader, big.NewInt(1<<Lambda))
 	rBytes := r.Bytes()
 	// (s, rho, h0, h1) = G(r)
 	s, rho, h0, h1 := G(r)
-	// s = VecSimplify(s, pk.sp.pRing.Modulus())
+	s = VecSimplify(s, p)
 	e := SampleD(M, Alpha_, rho)
-	fmt.Printf("Encap s: %v\n", s)
-	fmt.Printf("Encap h0: %v\n", h0)
-	fmt.Printf("Encap h1: %v\n", h1)
 	// x := A^t * s + e
-	pRing := pk.sp.pRing
 	matA := pk.sp.A
-	p := pRing.Modulus()
 	x := InitBigIntVec(M)
 	matAt := matA.Transpose()
 	for i := range M {
@@ -229,26 +156,27 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 		// x[i] += A^t[i] * s
 		x[i] = BigIntAddMod(x[i], BigIntDotProductMod(matAt[i], s, p), p)
 	}
-	fmt.Printf("Encap x: %v\n", x)
-
 	roundP2 := new(big.Int).Rsh(p, 1)
-	// hatH0 = U0^t * s + h0 round(p/2)
+
+	// hatH0 = U0^t * s + h0 * round(p/2)
 	hatH0 := InitBigIntVec(Lambda)
+	u0Ts := InitBigIntVec(Lambda)
 	matU0T := pk.U0.Transpose()
 	for i := range Lambda {
-		hatH0[i] = BigIntDotProductMod(matU0T[i], s, p)
-		hatH0[i] = BigIntAddMod(hatH0[i], h0[i], roundP2)
+		tmp := new(big.Int).Mul(h0[i], roundP2)
+		u0Ts[i] = BigIntDotProductMod(matU0T[i], s, p)
+		hatH0[i] = BigIntAddMod(u0Ts[i], tmp, p)
 	}
-	fmt.Printf("Encap hatH0: %v\n", hatH0)
 
 	// hatH1 = U1^t * s + h1 round(p/2)
 	hatH1 := InitBigIntVec(Lambda)
+	u1Ts := InitBigIntVec(Lambda)
 	matU1T := pk.U1.Transpose()
 	for i := range Lambda {
-		hatH1[i] = BigIntDotProductMod(matU1T[i], s, p)
-		hatH1[i] = BigIntAddMod(hatH1[i], h1[i], roundP2)
+		tmp := new(big.Int).Mul(h1[i], roundP2)
+		u1Ts[i] = BigIntDotProductMod(matU1T[i], s, p)
+		hatH1[i] = BigIntAddMod(u1Ts[i], tmp, p)
 	}
-	fmt.Printf("Encap hatH1: %v\n", hatH1)
 
 	// hatK0 = H(x,hatH0,h0), C0 = hatK0 xor R
 	hatK0 := hash3(x, hatH0, h0)
@@ -264,22 +192,9 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 		c1[i] = hatK1[i] ^ rBytes[i]
 	}
 
-	fmt.Printf("Encap hatK0: %v\n", hatK0)
-	fmt.Printf("Encap hatK1: %v\n", hatK1)
-
-	// ct := (c0, c1, x, hatH0, hatH1)
-	ct = append(ct, c0...)
-	ct = append(ct, c1...)
-	for i := range x {
-		ct = append(ct, BigIntBytesWithSize(x[i], QLen/8)...)
-	}
-	for i := range hatH0 {
-		ct = append(ct, BigIntBytesWithSize(hatH0[i], QLen/8)...)
-	}
-	for i := range hatH1 {
-		ct = append(ct, BigIntBytesWithSize(hatH1[i], QLen/8)...)
-	}
 	ss = r.Bytes()
+	ct = MergeCt(c0, c1, x, hatH0, hatH1)
+
 	if len(ct) != CiphertextSize/8 {
 		return nil, nil, fmt.Errorf("ciphertext size is not correct %d", len(ct))
 	} else if len(ss) != Lambda/8 {
@@ -289,7 +204,6 @@ func (pk *PublicKey) EncapsulateTo() (ct []byte, ss []byte, err error) {
 }
 
 func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
-	// ct := (c0, c1, x, hatH0, hatH1)
 	c0, c1, x, hatH0, hatH1 := ParseCt(ct)
 	p := sk.sp.pRing.Modulus()
 	roundP2 := new(big.Int).Rsh(p, 1)
@@ -319,42 +233,38 @@ func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 	for i := range Lambda {
 		round_[i] = BigIntSubMod(hatHb[i], ZbTx[i], p)
 	}
-	fmt.Printf("Decap round_: %v\n", round_)
 	hb_ := Round(round_, roundP2, p)
 	// hatKb = H(x, hatHb, hb_), R = cb xor hatKb
 	hatKb := hash3(x, hatHb, hb_)
-	fmt.Printf("Decap hatHb: %v\n", hatHb)
-	fmt.Printf("Decap hb_: %v\n", hb_)
-	fmt.Printf("Decap hatKb: %v\n", hatKb)
+
 	r_ := make([]byte, Lambda/8)
 	for i := range r_ {
 		r_[i] = cb[i] ^ hatKb[i]
 	}
 	r := new(big.Int).SetBytes(r_)
-	fmt.Printf("Decap r: %v\n", r)
 	s, rho, h0, h1 := G(r)
+	s = VecSimplify(s, p)
+
 	if sk.b {
-		// b = 1
 		hb, hnb = h1, h0
 	} else {
-		// b = 0
 		hb, hnb = h0, h1
 	}
 
 	// hatHnb_ = Unb^t * s + hnb round(p/2)
 	hatHnb_ := InitBigIntVec(Lambda)
+	unbTs := InitBigIntVec(Lambda)
 	matUnbT := unb.Transpose()
 	for i := range Lambda {
-		hatHnb_[i] = BigIntDotProductMod(matUnbT[i], s, p)
-		BigIntAddMod(hatHnb_[i], hnb[i], roundP2)
+		tmp := new(big.Int).Mul(hnb[i], roundP2)
+		unbTs[i] = BigIntDotProductMod(matUnbT[i], s, p)
+		hatHnb_[i] = BigIntAddMod(unbTs[i], tmp, p)
 	}
 	// hatKnb = H(x,hatHnb_,hnb)
 	hatKnb := hash3(x, hatHnb_, hnb)
-	fmt.Printf("Decap hatKnb: %v\n", hatKnb)
 
 	// check x = A^t * s + e
 	e := SampleD(M, Alpha_, rho)
-	fmt.Printf("Decap s: %v\n", s)
 	x_ := InitBigIntVec(M)
 	matAt := sk.sp.A.Transpose()
 	for i := range M {
@@ -383,16 +293,22 @@ func (sk *PrivateKey) DecapsulateTo(ct []byte) (ss []byte, err error) {
 
 func hash3(x Vec, hatHb Vec, hb Vec) []byte {
 	h := sha3.New256()
-	for i := range x {
-		h.Write(x[i].Bytes())
-	}
-	for i := range hatHb {
-		h.Write(hatHb[i].Bytes())
-	}
-	for i := range hb {
-		h.Write(hb[i].Bytes())
-	}
-	return h.Sum(nil)[:Lambda/8]
+	h.Write(x.BytesWithSize(QLen / 8))
+	h.Write(hatHb.BytesWithSize(QLen / 8))
+	h.Write(hb.BytesWithSize(QLen / 8))
+	tmp := make([]byte, Lambda/8)
+	h.Read(tmp)
+	return tmp
+}
+
+func MergeCt(c0 []byte, c1 []byte, x Vec, hatH0 Vec, hatH1 Vec) []byte {
+	ct := make([]byte, 0)
+	ct = append(ct, c0...)
+	ct = append(ct, c1...)
+	ct = append(ct, x.BytesWithSize(QLen/8)...)
+	ct = append(ct, hatH0.BytesWithSize(QLen/8)...)
+	ct = append(ct, hatH1.BytesWithSize(QLen/8)...)
+	return ct
 }
 
 func ParseCt(ct []byte) (c0 []byte, c1 []byte, x Vec, hatH0 Vec, hatH1 Vec) {
@@ -400,19 +316,10 @@ func ParseCt(ct []byte) (c0 []byte, c1 []byte, x Vec, hatH0 Vec, hatH1 Vec) {
 	c0 = ct[:Lambda/8]
 	c1 = ct[Lambda/8 : Lambda/4]
 	// x with length of M * Lambda/8 bytes
-	x = InitBigIntVec(M)
+	x = BytesToVecWithSize(ct[Lambda/4:], M, QLen/8)
 	// hatH0,hatH1 with length of Lambda
-	hatH0 = InitBigIntVec(Lambda)
-	hatH1 = InitBigIntVec(Lambda)
-	for i := range M {
-		x[i].SetBytes(ct[(2*Lambda+i*QLen)/8 : (2*Lambda+(i+1)*QLen)/8])
-	}
-	for i := range Lambda {
-		hatH0[i].SetBytes(ct[(2*Lambda+(M+i)*QLen)/8 : (2*Lambda+(M+i+1)*QLen)/8])
-	}
-	for i := range Lambda {
-		hatH1[i].SetBytes(ct[(2*Lambda+(M+Lambda+i)*QLen)/8 : (2*Lambda+(M+Lambda+i+1)*QLen)/8])
-	}
+	hatH0 = BytesToVecWithSize(ct[(2*Lambda+M*QLen)/8:], Lambda, QLen/8)
+	hatH1 = BytesToVecWithSize(ct[(2*Lambda+M*QLen+Lambda*QLen)/8:], Lambda, QLen/8)
 	return c0, c1, x, hatH0, hatH1
 }
 
@@ -441,15 +348,19 @@ func G(seed *big.Int) (s Vec, rho *big.Int, h1 Vec, h2 Vec) {
 	h2 = InitBigIntVec(Lambda)
 
 	Hash4(m, sBytes, rhoBytes, h1Bytes, h2Bytes)
+
 	CopyBitToByte(sBytes, sBits)
 	for i := range s {
 		s[i].SetBytes(sBits[i*(Log2Eta+1) : (i+1)*(Log2Eta+1)])
 	}
+
 	rho = new(big.Int).SetBytes(rhoBytes)
+
 	CopyBitToByte(h1Bytes, h1Bits)
 	for i := range h1 {
 		h1[i].SetInt64(int64(h1Bits[i]))
 	}
+
 	CopyBitToByte(h2Bytes, h2Bits)
 	for i := range h2 {
 		h2[i].SetInt64(int64(h2Bits[i]))

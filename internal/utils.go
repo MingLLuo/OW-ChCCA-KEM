@@ -191,13 +191,6 @@ func Round(t Vec, delim *big.Int, mod *big.Int) Vec {
 		} else {
 			rounded[i].SetInt64(1)
 		}
-		//toDelim := new(big.Int).Sub(v, delim)
-		//if toDelim.Cmp(v) > 0 {
-		//	// closer to 0 than delim, rounded[i] = 0
-		//	rounded[i].SetInt64(0)
-		//} else {
-		//	rounded[i].SetInt64(1)
-		//}
 	}
 	return rounded
 }
@@ -216,6 +209,52 @@ func (m Mat) Transpose() Mat {
 		}
 	}
 	return mT
+}
+
+func (m Mat) MulVec(v Vec, mod *big.Int) Vec {
+	// Check if m is empty
+	if len(m) == 0 {
+		panic("m is empty")
+	} else if len(m[0]) == 0 {
+		panic("m[0] is empty")
+	}
+	// Check if v is empty
+	if len(v) == 0 {
+		panic("v is empty")
+	}
+	// Check if m and v have different lengths
+	if len(m[0]) != len(v) {
+		panic("m and v have different lengths")
+	}
+	result := InitBigIntVec(len(m))
+	for i, row := range m {
+		result[i] = BigIntDotProductMod(row, v, mod)
+	}
+	return result
+}
+
+func (m Mat) MulMat(n Mat, mod *big.Int) Mat {
+	// Check if m is empty
+	if len(m) == 0 {
+		panic("m is empty")
+	} else if len(m[0]) == 0 {
+		panic("m[0] is empty")
+	}
+	// Check if n is empty
+	if len(n) == 0 {
+		panic("n is empty")
+	}
+	// Check if m and n have different lengths
+	if len(m[0]) != len(n) {
+		panic("m and n have different lengths")
+	}
+	result := InitBigIntMat(len(m), len(n[0]))
+	for i, row := range m {
+		for j, col := range n.Transpose() {
+			result[i][j] = BigIntDotProductMod(row, col, mod)
+		}
+	}
+	return result
 }
 
 func (v Vec) Equal(x Vec) bool {
@@ -273,18 +312,6 @@ func CopyBitToByte(src []byte, dest []byte) {
 
 func Hash4(initKey, sBytes, rhoBytes, h1Bytes, h2Bytes []byte) {
 	sl, rl, h1l, h2l := len(sBytes), len(rhoBytes), len(h1Bytes), len(h2Bytes)
-	//if sl*8 != N*(Log2Eta+1) {
-	//	panic("sBytes has wrong length")
-	//}
-	//if rl*8 != Lambda {
-	//	panic("rhoBytes has wrong length")
-	//}
-	//if h1l*8 != Lambda {
-	//	panic("h1Bytes has wrong length")
-	//}
-	//if h2l*8 != Lambda {
-	//	panic("h2Bytes has wrong length")
-	//}
 
 	// m = H(initKey)
 	h := sha3.New256()
@@ -324,4 +351,34 @@ func BigIntBytesWithSize(b *big.Int, size int) []byte {
 	}
 	tmp := make([]byte, size)
 	return b.FillBytes(tmp)
+}
+
+func BytesToVecWithSize(bytes []byte, length int, size int) Vec {
+	if len(bytes)%size != 0 {
+		panic("bytes has wrong length")
+	}
+	vec := InitBigIntVec(length)
+	for i := range vec {
+		vec[i].SetBytes(bytes[i*size : (i+1)*size])
+	}
+	return vec
+}
+
+func (v Vec) BytesWithSize(size int) []byte {
+	bytes := make([]byte, 0)
+	for _, b := range v {
+		bytes = append(bytes, BigIntBytesWithSize(b, size)...)
+	}
+	return bytes
+}
+
+func (v Vec) RestoreBigIntVec(b []byte) {
+	vLen := len(v)
+	size := len(b) / vLen
+	if len(b)%vLen != 0 {
+		panic("b has wrong length")
+	}
+	for i := range v {
+		v[i].SetBytes(b[i*size : (i+1)*size])
+	}
 }

@@ -29,71 +29,24 @@ const (
 	MatZbSize   = M * Lambda * QLen
 )
 
-//const (
-//	SeedSize = 32
-//	// 2^6
-//	Lambda = 64
-//	K      = Lambda
-//	// sqrt(N) = 67
-//	N = 70 * Lambda
-//	// Approximate 70 * 64 -> 2^12, 6 * 12 = 72, 7 * 12 = 84 -> 80
-//	QLen = 80
-//	M    = 2 * N * QLen
-//	// sqrt(2^6 * 70) = 66 -> 64
-//	Alpha  = 64
-//	Eta    = 64
-//	Log2Eta = 6
-//	// Alpha_ 2^(2.5*10) * 2^16
-//	Alpha_ = N * N * M * 67
-//)
-
-//const (
-//	SeedSize = 32
-//	Lambda   = 16
-//	K        = Lambda
-//	// sqrt(N) = 32
-//	N = 64 * Lambda
-//	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
-//	QLen    = 64
-//	M       = 2 * N * QLen
-//	Alpha   = 32
-//	Eta     = 32
-//	Log2Eta = 5
-//	Alpha_  = N * N * M * 32
-//)
-
 const (
 	SeedSize = 32
-	Lambda   = 32
+	Lambda   = 16
+	sqrtN    = 4
+	Log2N    = 4
+	Log2Eta  = 5
 	K        = Lambda
-	// sqrt(N) = 32
-	N = 512
-	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
-	QLen = 64
+	N        = sqrtN * sqrtN
+	QMin     = N * N * N * N * N * N
+	QMax     = N * QMin
+	//QLen = Log2N * 6
+	QLen = 16
 	// M       = 2 * N * QLen
-	M       = 128
-	Alpha   = 32
-	Eta     = 32
-	Log2Eta = 5
-	Alpha_  = N * N * M * 32
+	M      = 16
+	Alpha  = sqrtN
+	Eta    = 1 << Log2Eta
+	Alpha_ = N * N * sqrtN * M
 )
-
-//
-//const (
-//	SeedSize = 32
-//	Lambda   = 32
-//	K        = Lambda
-//	// sqrt(N) = 32
-//	N = 512
-//	// Approximate 64 * 16 -> 2^10, 6 * 10 = 60, 7 * 10 = 70 -> 64
-//	QLen = 64
-//	// M       = 2 * N * QLen
-//	M       = 128
-//	Alpha   = 32
-//	Eta     = 32
-//	Log2Eta = 5
-//	Alpha_  = N * N * M * 32
-//)
 
 type Parameters struct {
 	logN uint64
@@ -102,7 +55,8 @@ type Parameters struct {
 }
 
 var testParameters = Parameters{
-	10, Qi60[len(Qi60)-1:], Pi60[len(Pi60)-1:],
+	//10, Qi60[len(Qi60)-1:], Pi60[len(Pi60)-1:],
+	10, Qi60[len(Qi60)-1:], []uint64{257},
 }
 
 // Qi60 are the first [0:32] 61-bit close to 2^{62} NTT-friendly primes for N up to 2^{17}

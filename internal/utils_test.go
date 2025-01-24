@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/tuneinsight/lattigo/v6/ring"
@@ -85,4 +86,51 @@ func TestHash4(t *testing.T) {
 	fmt.Printf("b2: %v\n", b2)
 	fmt.Printf("b3: %v\n", b3)
 	fmt.Printf("b4: %v\n", b4)
+}
+
+func TestRound(t *testing.T) {
+	pRing, err := ring.NewRing(8, moduli)
+	if err != nil {
+		t.Errorf("Error in NewRing: %v", err)
+	}
+	p := pRing.Modulus()
+	roundP2 := new(big.Int).Rsh(p, 1)
+	v := InitBigIntVec(8)
+	for i := range v {
+		v[i] = new(big.Int).SetInt64(1)
+	}
+	roundVec := Round(v, roundP2, p)
+	fmt.Printf("roundVec: %v\n", roundVec)
+}
+
+func TestBigIntBytesWithSize(t *testing.T) {
+	// Small BigInt
+	b := bignum.NewInt("123456789")
+	fmt.Printf("b: %v\n", b.Bytes())
+	bBytes := BigIntBytesWithSize(b, 8)
+	fmt.Printf("bBytes: %v\n", bBytes)
+	// Restore BigInt
+	bRestored := new(big.Int).SetBytes(bBytes)
+	fmt.Printf("bRestored: %v\n", bRestored)
+}
+
+func TestVec_BytesWithSize(t *testing.T) {
+	// Empty Vec
+	emptyVec := InitBigIntVec(0)
+	emptyVecBytes := emptyVec.BytesWithSize(8)
+	fmt.Printf("emptyVecBytes: %v\n", emptyVecBytes)
+	// Vec with 3 elements
+	vec := InitBigIntVec(3)
+	for i := range vec {
+		vec[i] = new(big.Int).SetInt64(int64(i))
+	}
+	vecBytes := vec.BytesWithSize(8)
+	fmt.Printf("vecBytes: %v\n", vecBytes)
+
+}
+
+func TestBigIntBytes(t *testing.T) {
+	// Small BigInt
+	b := new(big.Int).SetBytes(make([]byte, 8))
+	fmt.Printf("b: %v\n", len(b.Bytes()))
 }

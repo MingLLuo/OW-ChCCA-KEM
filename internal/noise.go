@@ -9,7 +9,6 @@ import (
 )
 
 // SampleD will sample from a discrete Gaussian distribution
-
 func SampleD(m int, alpha_ float64, rho *big.Int) Vec {
 	// Sample from a discrete Gaussian distribution
 	// NewRing creates a new ring with m moduli of the given bit-size, m must be a power of 2 larger than 8.
@@ -32,6 +31,7 @@ func SampleD(m int, alpha_ float64, rho *big.Int) Vec {
 	// convert to []big.Int
 	coeffs := InitBigIntVec(m)
 	newRing.PolyToBigint(pol, 1, coeffs)
+	coeffs = InitBigIntVec(m)
 	return coeffs
 }
 
