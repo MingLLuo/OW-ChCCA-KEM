@@ -1,4 +1,4 @@
-module OW-ChCCA-KEM
+module github.com/MingLLuo/OW-ChCCA-KEM
 
 go 1.23.4
 
