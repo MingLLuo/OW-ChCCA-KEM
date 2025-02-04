@@ -6,7 +6,7 @@ import (
 	"io"
 	"math/big"
 
-	"OW-ChCCA-KEM/internal/sha3"
+	"github.com/MingLLuo/OW-ChCCA-KEM/internal/sha3"
 
 	"github.com/tuneinsight/lattigo/v6/ring"
 	"github.com/tuneinsight/lattigo/v6/utils/sampling"

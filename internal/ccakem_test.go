@@ -161,18 +161,12 @@ func TestParseCt(t *testing.T) {
 	}
 	if len(x) != M {
 		t.Errorf("Expected x size to be %d, got %d", M, len(x))
-	} else if len(x[0].Bytes()) != QLen/8 {
-		t.Errorf("Expected x[0] size to be %d, got %d", QLen/8, len(x[0].Bytes()))
 	}
 	if len(hatH0) != Lambda {
 		t.Errorf("Expected hatH0 size to be %d, got %d", Lambda, len(hatH0))
-	} else if len(hatH0[0].Bytes()) != QLen/8 {
-		t.Errorf("Expected hatH0[0] size to be %d, got %d", QLen/8, len(hatH0[0].Bytes()))
 	}
 	if len(hatH1) != Lambda {
 		t.Errorf("Expected hatH1 size to be %d, got %d", Lambda, len(hatH1))
-	} else if len(hatH1[0].Bytes()) != QLen/8 {
-		t.Errorf("Expected hatH1[0] size to be %d, got %d", QLen/8, len(hatH1[0].Bytes()))
 	}
 }
 

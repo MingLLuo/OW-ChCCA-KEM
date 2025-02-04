@@ -1,7 +1,7 @@
 package owchcca
 
 import (
-	"OW-ChCCA-KEM/internal"
+	"github.com/MingLLuo/OW-ChCCA-KEM/internal"
 )
 
 type (
