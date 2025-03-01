@@ -1,83 +1,189 @@
 package owchcca
 
-import "testing"
+import (
+	"bytes"
+	"crypto/rand"
+	"github.com/MingLLuo/OW-ChCCA-KEM/internal"
+	"testing"
+)
 
-func TestDecapsulate(t *testing.T) {
-	sp := Setup()
-	pk, sk, err := GenerateNewKeyPair(*sp)
-	if err != nil {
-		t.Errorf("Error in GenerateNewKeyPair: %v", err)
-	}
-	ct, ss1, err := Encapsulate(*pk)
-	if err != nil {
-		t.Errorf("Error in Encapsulate: %v", err)
-	}
-	ss2, err := Decapsulate(*sk, ct)
-	if err != nil {
-		t.Errorf("Error in Decapsulate: %v", err)
-	}
-	if len(ss1) != len(ss2) {
-		t.Errorf("Expected ss1 and ss2 to have the same length")
-	}
-	for i := range ss1 {
-		if ss1[i] != ss2[i] {
-			t.Errorf("Expected ss1 and ss2 to be equal")
+func TestKEMConsistency(t *testing.T) {
+	// Test with all parameter sets
+	testParams := internal.ListParameterSets()
+
+	for _, paramName := range testParams {
+		params, err := internal.GetParameterSet(paramName)
+		if err != nil {
+			t.Fatalf("GetParameterSet failed: %v", err)
 		}
+		t.Run(params.Name, func(t *testing.T) {
+			// Generate a key pair
+			pk, sk, err := GenerateKeyPair(params)
+			if err != nil {
+				t.Fatalf("GenerateKeyPair failed: %v", err)
+			}
+
+			// Encapsulate a shared key
+			ct, ss1, err := Encapsulate(pk)
+			if err != nil {
+				t.Fatalf("Encapsulate failed: %v", err)
+			}
+
+			// Decapsulate the shared key
+			ss2, err := Decapsulate(sk, ct)
+			if err != nil {
+				t.Fatalf("Decapsulate failed: %v", err)
+			}
+
+			// Verify that the shared keys match
+			if !bytes.Equal(ss1, ss2) {
+				t.Errorf("Shared keys do not match")
+			}
+		})
 	}
 }
 
-func TestBytesDecoding(t *testing.T) {
-	sp := Setup()
-	spBytes, err := MarshalSharedParam(*sp)
-	if err != nil {
-		t.Errorf("Error in MarshalSharedParam: %v", err)
-	}
-	spRes, err := UnmarshalSharedParam(spBytes)
-	if err != nil {
+func TestKEMSerialization(t *testing.T) {
+	// Use the lowest parameter set for simplicity
+	params := internal.GetDefaultParameterSet()
 
-	}
-	pk, sk, err := GenerateNewKeyPair(spRes)
+	// Generate a key pair
+	pk1, sk1, err := GenerateKeyPair(params)
 	if err != nil {
-		t.Errorf("Error in GenerateNewKeyPair: %v", err)
-	}
-	pkBytes, err := MarshalBinaryPublicKey(*pk)
-	if err != nil {
-		t.Errorf("Error in MarshalBinaryPublicKey: %v", err)
-	}
-	pkRes, err := UnmarshalBinaryPublicKey(pkBytes, *sp)
-	if err != nil {
-		t.Errorf("Error in UnmarshalBinaryPublicKey: %v", err)
-	}
-	ct, ss1, err := Encapsulate(pkRes)
-	if err != nil {
-		t.Errorf("Error in Encapsulate: %v", err)
+		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	skBytes, err := MarshalBinaryPrivateKey(*sk)
+	// Serialize the keys
+	pkBytes, err := pk1.Bytes()
 	if err != nil {
-		t.Errorf("Error in MarshalBinaryPrivateKey: %v", err)
-	}
-	skRes, err := UnmarshalBinaryPrivateKey(skBytes, *pk, *sp)
-	if err != nil {
-		t.Errorf("Error in UnmarshalBinaryPrivateKey: %v", err)
+		t.Fatalf("Failed to serialize public key: %v", err)
 	}
 
-	ss2, err := Decapsulate(skRes, ct)
+	skBytes, err := sk1.Bytes()
 	if err != nil {
-		t.Errorf("Error in Decapsulate: %v", err)
+		t.Fatalf("Failed to serialize private key: %v", err)
 	}
-	if len(ss1) != len(ss2) {
-		t.Errorf("Expected ss1 and ss2 to have the same length")
+
+	// Parse the keys
+	pk2, err := ParsePublicKey(pkBytes, &params)
+	if err != nil {
+		t.Fatalf("Failed to parse public key: %v", err)
 	}
-	for i := range ss1 {
-		if ss1[i] != ss2[i] {
-			t.Errorf("Expected ss1 and ss2 to be equal")
+
+	sk2, err := ParsePrivateKey(skBytes, pk2)
+	if err != nil {
+		t.Fatalf("Failed to parse private key: %v", err)
+	}
+
+	// Verify that the keys are equal
+	if !pk1.Equal(pk2) {
+		t.Errorf("Public keys do not match after serialization")
+	}
+
+	if !sk1.Equal(sk2) {
+		t.Errorf("Private keys do not match after serialization")
+	}
+
+	// Test encapsulation/decapsulation with the parsed keys
+	ct, ss1, err := Encapsulate(pk2)
+	if err != nil {
+		t.Fatalf("Encapsulate failed: %v", err)
+	}
+
+	ss2, err := Decapsulate(sk2, ct)
+	if err != nil {
+		t.Fatalf("Decapsulate failed: %v", err)
+	}
+
+	if !bytes.Equal(ss1, ss2) {
+		t.Errorf("Shared keys do not match after serialization")
+	}
+}
+
+func TestInvalidInputs(t *testing.T) {
+	// Use the lowest parameter set for simplicity
+	params := internal.GetDefaultParameterSet()
+
+	// Generate a key pair
+	pk, sk, err := GenerateKeyPair(params)
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+
+	// Create an invalid ciphertext
+	invalidCT := make([]byte, params.KeyParams.CiphertextSize+1)
+	rand.Read(invalidCT)
+
+	// Try to decapsulate with an invalid ciphertext
+	_, err = Decapsulate(sk, invalidCT)
+	if err == nil {
+		t.Errorf("Decapsulate should fail with an invalid ciphertext")
+	}
+
+	// Generate a valid ciphertext
+	ct, _, err := Encapsulate(pk)
+	if err != nil {
+		t.Fatalf("Encapsulate failed: %v", err)
+	}
+
+	// Modify the ciphertext
+	modifiedCT := make([]byte, len(ct))
+	copy(modifiedCT, ct)
+	modifiedCT[0] ^= 0xFF
+
+	// Try to decapsulate with a modified ciphertext
+	_, err = Decapsulate(sk, modifiedCT)
+	if err == nil {
+		t.Errorf("Decapsulate should fail with a modified ciphertext")
+	}
+}
+
+func BenchmarkKEM(b *testing.B) {
+	testParams := internal.ListParameterSets()
+	for _, paramName := range testParams {
+		params, err := internal.GetParameterSet(paramName)
+		if err != nil {
+			b.Fatalf("GetParameterSet failed: %v", err)
 		}
+		b.Logf("Benchmarking parameter set %s", params.Name)
+		// Generate a key pair outside the benchmark loop
+		pk, sk, err := GenerateKeyPair(params)
+		if err != nil {
+			b.Fatalf("GenerateKeyPair failed: %v", err)
+		}
+
+		b.Run("KeyGen", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _, err := GenerateKeyPair(params)
+				if err != nil {
+					b.Fatalf("GenerateKeyPair failed: %v", err)
+				}
+			}
+		})
+
+		b.Run("Encap", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _, err := Encapsulate(pk)
+				if err != nil {
+					b.Fatalf("Encapsulate failed: %v", err)
+				}
+			}
+		})
+
+		// Generate a ciphertext for Decaps benchmarks
+		ct, _, err := Encapsulate(pk)
+		if err != nil {
+			b.Fatalf("Encapsulate failed: %v", err)
+		}
+
+		b.Run("Decap", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := Decapsulate(sk, ct)
+				if err != nil {
+					b.Fatalf("Decapsulate failed: %v", err)
+				}
+			}
+		})
 	}
 
-	// Size output
-	t.Logf("Shared key size: %d Bits", len(ss1)*8)
-	t.Logf("Public key size: %d Bytes", len(pkBytes))
-	t.Logf("Private key size: %d Bytes", len(skBytes))
-	t.Logf("Shared param size: %d Bytes", len(spBytes))
 }

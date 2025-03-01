@@ -1,111 +1,106 @@
 package owchcca
 
 import (
+	"crypto/rand"
 	"github.com/MingLLuo/OW-ChCCA-KEM/internal"
 )
 
-type (
-	SharedParam = internal.SharedParam
-	PublicKey   = internal.PublicKey
-	PrivateKey  = internal.PrivateKey
-	Mat         = internal.Mat
-)
+type KEM = internal.OwChCCAKEM
+type PublicKey = internal.PublicKey
+type PrivateKey = internal.PrivateKey
+type Parameters = internal.Parameters
 
-var Random = internal.RandReader
+// KEM defines the interface for a key encapsulation mechanism
+//type KEM interface {
+//	// Encapsulate generates a shared key and encapsulates it
+//	Encapsulate(pk PublicKey) (ciphertext, sharedKey []byte, err error)
+//
+//	// Decapsulate recovers the shared key from a ciphertext
+//	Decapsulate(sk PrivateKey, ciphertext []byte) (sharedKey []byte, err error)
+//
+//	// PublicKeySize returns the size in bytes of encoded public keys
+//	PublicKeySize() int
+//
+//	// PrivateKeySize returns the size in bytes of encoded private keys
+//	PrivateKeySize() int
+//
+//	// CiphertextSize returns the size in bytes of ciphertexts
+//	CiphertextSize() int
+//
+//	// SharedKeySize returns the size in bytes of shared keys
+//	SharedKeySize() int
+//
+//	// GenerateKeyPair generates a key pair using the provided randomness source
+//	GenerateKeyPair(rand io.Reader) (PublicKey, PrivateKey, error)
+//}
+// PublicKey represents an OW-ChCCA-KEM public key
+//type PublicKey interface {
+//	// Bytes returns the serialized form of the public key
+//	Bytes() ([]byte, error)
+//
+//	// Parameters returns the parameters used by this public key
+//	Parameters() internal.Parameters
+//
+//	// Equal returns true if the public keys are equal
+//	Equal(PublicKey) bool
+//}
 
-// Name of the scheme
-func Name() string {
-	return "OW-ChCCA-KEM"
-}
+// PrivateKey represents an OW-ChCCA-KEM private key
+//type PrivateKey interface {
+//	// Bytes returns the serialized form of the private key
+//	Bytes() ([]byte, error)
+//
+//	// Public returns the public key corresponding to this private key
+//	Public() PublicKey
+//
+//	// Equal returns true if the private keys are equal
+//	Equal(PrivateKey) bool
+//}
 
-// Setup generates a shared parameter for the scheme.
-func Setup() *SharedParam {
-	return internal.Setup(Random)
-}
-
-// GenerateKeyPair generates a public/private key pair using entropy from rand.
-// Paper uses the seed from Setup with par := random(Z_q, n x m)
-func GenerateKeyPair() (*PublicKey, *PrivateKey, *SharedParam, error) {
-	pk, sk, ss, err := internal.InitKey(Random)
-	if err != nil {
-		return nil, nil, nil, err
+// NewKEM creates a new KEM instance with the specified parameters
+func NewKEM(params Parameters) KEM {
+	return KEM{
+		Params: params,
 	}
-	return pk, sk, ss, nil
 }
 
-// GenerateNewKeyPair generates a public/private key pair using entropy from rand.
-func GenerateNewKeyPair(ss SharedParam) (*PublicKey, *PrivateKey, error) {
-	pk, sk, err := internal.NewKey(Random, &ss)
-	if err != nil {
-		return nil, nil, err
+// Encapsulate generates a shared key and encapsulates it for the given public key
+func Encapsulate(pk *PublicKey) (ciphertext, sharedKey []byte, err error) {
+	kem := NewKEM(pk.Parameters())
+	return kem.Encapsulate(pk)
+}
+
+// Decapsulate recovers a shared key from a ciphertext using the given private key
+func Decapsulate(sk *PrivateKey, ciphertext []byte) (sharedKey []byte, err error) {
+	public := sk.Public()
+	kem := NewKEM(public.Parameters())
+	return kem.Decapsulate(sk, ciphertext)
+}
+
+// GenerateKeyPair generates a new key pair with the specified parameters
+func GenerateKeyPair(params Parameters) (*PublicKey, *PrivateKey, error) {
+	kem := NewKEM(params)
+	return kem.GenerateKeyPair(rand.Reader)
+}
+
+// ParsePublicKey parses a serialized public key
+func ParsePublicKey(data []byte, params *Parameters) (*PublicKey, error) {
+	pk := PublicKey{
+		Params: *params,
 	}
-	return pk, sk, nil
+	if err := pk.UnmarshalBinary(data); err != nil {
+		return nil, err
+	}
+	return &pk, nil
 }
 
-// Encapsulate generates a shared key ss for the public key and
-// encapsulates it into a ciphertext ct.
-func Encapsulate(pk PublicKey) ([]byte, []byte, error) {
-	return pk.EncapsulateTo()
-}
-
-// Decapsulate Returns the shared key encapsulated in ciphertext ct for the
-// private key sk.
-func Decapsulate(sk PrivateKey, ct []byte) ([]byte, error) {
-	return sk.DecapsulateTo(ct)
-}
-
-// MarshalSharedParam marshals a SharedParam into a binary form.
-func MarshalSharedParam(sp SharedParam) ([]byte, error) {
-	return sp.MarshalBinary()
-}
-
-// MarshalBinaryPublicKey marshals a PublicKey into a binary form.
-func MarshalBinaryPublicKey(pk PublicKey) ([]byte, error) {
-	return pk.MarshalBinary()
-}
-
-// MarshalBinaryPrivateKey marshals a PrivateKey into a binary form.
-func MarshalBinaryPrivateKey(sk PrivateKey) ([]byte, error) {
-	return sk.MarshalBinary()
-}
-
-// UnmarshalSharedParam Unmarshals a SharedParam from the provided buffer.
-func UnmarshalSharedParam(buf []byte) (SharedParam, error) {
-	var sp SharedParam
-	err := sp.UnmarshalBinary(buf)
-	return sp, err
-}
-
-// UnmarshalBinaryPublicKey Unmarshals a PublicKey from the provided buffer.
-func UnmarshalBinaryPublicKey(buf []byte, sp SharedParam) (PublicKey, error) {
-	var pk PublicKey
-	err := pk.UnmarshalBinary(buf, &sp)
-	return pk, err
-}
-
-// UnmarshalBinaryPrivateKey Unmarshals a PrivateKey from the provided buffer.
-func UnmarshalBinaryPrivateKey(buf []byte, pk PublicKey, sp SharedParam) (PrivateKey, error) {
-	var sk PrivateKey
-	err := sk.UnmarshalBinary(buf, &sp, &pk)
-	return sk, err
-}
-
-// CiphertextSize Size of encapsulated keys.
-func CiphertextSize() int {
-	return internal.CiphertextSize
-}
-
-// SharedKeySize Size of established shared keys.
-func SharedKeySize() int {
-	return internal.SharedKeySize
-}
-
-// PrivateKeySize Size of packed private keys.
-func PrivateKeySize() int {
-	return internal.PrivateKeySize
-}
-
-// PublicKeySize Size of packed public keys.
-func PublicKeySize() int {
-	return internal.PublicKeySize
+// ParsePrivateKey parses a serialized private key
+func ParsePrivateKey(data []byte, pk *PublicKey) (*PrivateKey, error) {
+	sk := PrivateKey{
+		Pk: pk,
+	}
+	if err := sk.UnmarshalBinary(data); err != nil {
+		return nil, err
+	}
+	return &sk, nil
 }
