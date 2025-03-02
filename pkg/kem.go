@@ -148,6 +148,15 @@ func (pk *PublicKey) UnmarshalBinary(data []byte) error {
 func (sk *PrivateKey) Bytes() ([]byte, error) {
 	var buf bytes.Buffer
 
+	// Write public key
+	pkBytes, err := sk.Pk.Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSerializationError, err)
+	}
+	if _, err = buf.Write(pkBytes); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSerializationError, err)
+	}
+
 	// Write Zb matrix
 	zbBytes, err := sk.zb.MarshalBinary()
 	if err != nil {
@@ -199,6 +208,13 @@ func (sk *PrivateKey) UnmarshalBinary(data []byte) error {
 	m := params.LatticeParams.M
 	lambda := params.LatticeParams.Lambda
 	modulus := params.LatticeParams.Q
+	// Restore public key
+	pkSize := params.KeyParams.PublicKeySize
+	pkData := data[:pkSize]
+	err := sk.Pk.UnmarshalBinary(pkData)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDeserializationError, err)
+	}
 
 	// Calculate expected size
 	zbSize := 8 + m*lambda*((modulus.BitLen()+7)/8)

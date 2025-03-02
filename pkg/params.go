@@ -235,23 +235,7 @@ func CalculateParameters(lambda SecurityLevel) Parameters {
 	// Calculate alphaPrime as n^2.5 * m
 	alphaPrime := math.Pow(float64(n), 2.5) * float64(m)
 
-	// Calculate key sizes
-	modulus := new(big.Int).Set(q)
-	elementSize := (modulus.BitLen() + 7) / 8
-	aSize := 8 + n*m*elementSize
-	uSize := 8 + n*level*elementSize
-	publicKeySize := aSize + uSize*2
-
-	zbSize := 8 + m*level*elementSize
-	privateKeySize := zbSize + 1
-	// c0 || c1 || x || hatH0 || hatH1
-	cbSize := level / 8
-	xSize := 4 + m*elementSize
-	hatHbSize := level / 8
-	ciphertextSize := 2*cbSize + xSize + 2*hatHbSize
-	sharedKeySize := level / 8
-
-	return Parameters{
+	param := Parameters{
 		Name:          fmt.Sprintf("OWChCCA-%d", lambda),
 		SecurityLevel: lambda,
 		LatticeParams: LatticeParameters{
@@ -269,13 +253,52 @@ func CalculateParameters(lambda SecurityLevel) Parameters {
 			Eta:        eta,
 			LogEta:     logEta,
 		},
-		KeyParams: KeyParameters{
-			PublicKeySize:  publicKeySize,
-			PrivateKeySize: privateKeySize,
-			CiphertextSize: ciphertextSize,
-			SharedKeySize:  sharedKeySize,
-		},
+		KeyParams: KeyParameters{},
 	}
+	param.KeyParams.PublicKeySize = param.PublicKeySize()
+	param.KeyParams.PrivateKeySize = param.PrivateKeySize()
+	param.KeyParams.CiphertextSize = param.CiphertextSize()
+	param.KeyParams.SharedKeySize = param.SharedKeySize()
+	return param
+}
+
+func (p Parameters) PublicKeySize() int {
+	q := p.LatticeParams.Q
+	n := p.LatticeParams.N
+	m := p.LatticeParams.M
+	level := int(p.SecurityLevel)
+	modulus := new(big.Int).Set(q)
+	elementSize := (modulus.BitLen() + 7) / 8
+	aSize := 8 + n*m*elementSize
+	uSize := 8 + n*level*elementSize
+	return aSize + uSize*2
+}
+
+func (p Parameters) PrivateKeySize() int {
+	q := p.LatticeParams.Q
+	m := p.LatticeParams.M
+	level := int(p.SecurityLevel)
+	modulus := new(big.Int).Set(q)
+	elementSize := (modulus.BitLen() + 7) / 8
+	zbSize := 8 + m*level*elementSize
+	return zbSize + 1
+}
+
+func (p Parameters) CiphertextSize() int {
+	q := p.LatticeParams.Q
+	m := p.LatticeParams.M
+	level := int(p.SecurityLevel)
+	modulus := new(big.Int).Set(q)
+	elementSize := (modulus.BitLen() + 7) / 8
+	cbSize := level / 8
+	xSize := 4 + m*elementSize
+	hatHbSize := level / 8
+	return 2*cbSize + xSize + 2*hatHbSize
+}
+
+func (p Parameters) SharedKeySize() int {
+	level := int(p.SecurityLevel)
+	return level / 8
 }
 
 // Validate checks if the parameters satisfy the security requirements
