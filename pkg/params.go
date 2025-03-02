@@ -211,8 +211,8 @@ func CalculateParameters(lambda SecurityLevel) Parameters {
 	for m = int(math.Exp2(float64(minLogM))); m <= int(math.Exp2(float64(maxLogM))); m = m * 2 {
 		// find q
 		// logQ = m / (2 * n)
-		logQ = min(60, m/(2*n))
-		nttGenerator := NewBigNTTFriendlyPrimesGenerator(logQ+1, new(big.Int).SetInt64(int64(m)))
+		logQ = min(60, max(62, m/(2*n)))
+		nttGenerator := NewBigNTTFriendlyPrimesGenerator(logQ+1, new(big.Int).SetInt64(int64(2*m)))
 		q, err = nttGenerator.NextDownstreamPrime()
 		if err != nil {
 			if m != maxM {
