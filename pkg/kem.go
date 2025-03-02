@@ -150,6 +150,9 @@ func (sk *PrivateKey) Bytes() ([]byte, error) {
 
 	// Write public key
 	pkBytes, err := sk.Pk.Bytes()
+	if len(pkBytes) != sk.Pk.Params.KeyParams.PublicKeySize {
+		return nil, fmt.Errorf("%w: invalid public key size", ErrSerializationError)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSerializationError, err)
 	}
@@ -226,12 +229,12 @@ func (sk *PrivateKey) UnmarshalBinary(data []byte) error {
 
 	// Parse Zb matrix
 	sk.zb = arithmetic.NewMatrix(m, lambda, modulus)
-	if err := sk.zb.UnmarshalBinary(data[:zbSize]); err != nil {
+	if err := sk.zb.UnmarshalBinary(data[pkSize:]); err != nil {
 		return fmt.Errorf("%w: %v", ErrDeserializationError, err)
 	}
 
 	// Parse b flag
-	sk.b = data[zbSize] == 1
+	sk.b = data[pkSize+zbSize] == 1
 
 	return nil
 }
