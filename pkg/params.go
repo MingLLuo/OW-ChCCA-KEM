@@ -281,7 +281,11 @@ func (p Parameters) PrivateKeySize() int {
 	modulus := new(big.Int).Set(q)
 	elementSize := (modulus.BitLen() + 7) / 8
 	zbSize := 8 + m*level*elementSize
-	return zbSize + 1
+	pkSize := p.PublicKeySize()
+	if pkSize == 0 {
+		pkSize = p.PublicKeySize()
+	}
+	return zbSize + 1 + pkSize
 }
 
 func (p Parameters) CiphertextSize() int {
