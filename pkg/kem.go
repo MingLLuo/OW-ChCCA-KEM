@@ -6,10 +6,11 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/arithmetic"
-	"github.com/tuneinsight/lattigo/v6/ring"
 	"io"
 	"math/big"
+
+	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/arithmetic"
+	"github.com/tuneinsight/lattigo/v6/ring"
 
 	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/sha3"
 )

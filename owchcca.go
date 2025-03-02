@@ -2,13 +2,16 @@ package owchcca
 
 import (
 	"crypto/rand"
+
 	"github.com/MingLLuo/OW-ChCCA-KEM/pkg"
 )
 
-type KEM = pkg.OwChCCAKEM
-type PublicKey = pkg.PublicKey
-type PrivateKey = pkg.PrivateKey
-type Parameters = pkg.Parameters
+type (
+	KEM        = pkg.OwChCCAKEM
+	PublicKey  = pkg.PublicKey
+	PrivateKey = pkg.PrivateKey
+	Parameters = pkg.Parameters
+)
 
 // KEM defines the interface for a key encapsulation mechanism
 //type KEM interface {

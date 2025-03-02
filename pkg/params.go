@@ -2,10 +2,11 @@ package pkg
 
 import (
 	"fmt"
-	"github.com/tuneinsight/lattigo/v6/ring"
 	"math"
 	"math/big"
 	"sync"
+
+	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // SecurityLevel represents a standardized security level in bits
@@ -28,16 +29,12 @@ const (
 
 type Parameters struct {
 	Name string
-
 	// SecurityLevel is the estimated security level in bits
 	SecurityLevel SecurityLevel
-
 	// LatticeParams defines the lattice dimensions
 	LatticeParams LatticeParameters
-
 	// GaussianParams defines the Gaussian sampling parameters
 	GaussianParams GaussianParameters
-
 	// KeyParams defines key-related parameters
 	KeyParams KeyParameters
 }
@@ -101,9 +98,9 @@ func init() {
 	RegisterParameterSet(CalculateParameters(Security16))
 	RegisterParameterSet(CalculateParameters(Security32))
 	RegisterParameterSet(CalculateParameters(Security64))
-	//RegisterParameterSet(CalculateParameters(Security128))
-	//RegisterParameterSet(CalculateParameters(Security192))
-	//RegisterParameterSet(CalculateParameters(Security256))
+	// RegisterParameterSet(CalculateParameters(Security128))
+	// RegisterParameterSet(CalculateParameters(Security192))
+	// RegisterParameterSet(CalculateParameters(Security256))
 
 	SetDefaultParameterSet("OWChCCA-16")
 }
@@ -181,7 +178,7 @@ func CalculateParameters(lambda SecurityLevel) Parameters {
 	level := int(lambda)
 
 	// Calculate parameters according to the formulas
-	//n := 70 * level
+	// n := 70 * level
 	n := 8 * level
 	k := level
 
@@ -195,10 +192,10 @@ func CalculateParameters(lambda SecurityLevel) Parameters {
 	var m, logQ int
 	var q *big.Int
 	var err error
-	//minLogQ := 6*logN + 1
-	//maxLogQ := 7 * logN
-	//minM := 12*n*logN + 1
-	//maxM := 14 * n * logN
+	// minLogQ := 6*logN + 1
+	// maxLogQ := 7 * logN
+	// minM := 12*n*logN + 1
+	// maxM := 14 * n * logN
 	minM := 6*n*logN + 1
 	maxM := 7 * n * logN
 	// Find Closest M with power of 2
@@ -213,8 +210,8 @@ func CalculateParameters(lambda SecurityLevel) Parameters {
 
 	for m = int(math.Exp2(float64(minLogM))); m <= int(math.Exp2(float64(maxLogM))); m = m * 2 {
 		// find q
-		//logQ = m / (2 * n)
-		logQ = min(60, max(50, m/(2*n)))
+		// logQ = m / (2 * n)
+		logQ = min(60, m/(2*n))
 		nttGenerator := NewBigNTTFriendlyPrimesGenerator(logQ+1, new(big.Int).SetInt64(int64(m)))
 		q, err = nttGenerator.NextDownstreamPrime()
 		if err != nil {
@@ -289,7 +286,7 @@ func (p Parameters) Validate() error {
 	lambda := p.LatticeParams.Lambda
 	k := p.LatticeParams.K
 	q := p.LatticeParams.Q
-	//logQ := p.LatticeParams.LogQ
+	// logQ := p.LatticeParams.LogQ
 	alpha := p.GaussianParams.Alpha
 	alphaPrime := p.GaussianParams.AlphaPrime
 	eta := p.GaussianParams.Eta

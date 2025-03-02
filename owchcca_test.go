@@ -3,9 +3,10 @@ package owchcca
 import (
 	"bytes"
 	"crypto/rand"
+	"testing"
+
 	"github.com/MingLLuo/OW-ChCCA-KEM/pkg"
 	"github.com/kr/pretty"
-	"testing"
 )
 
 func TestKEMConsistency(t *testing.T) {
@@ -191,5 +192,4 @@ func BenchmarkKEM(b *testing.B) {
 			}
 		})
 	}
-
 }
