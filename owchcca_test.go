@@ -3,16 +3,17 @@ package owchcca
 import (
 	"bytes"
 	"crypto/rand"
-	"github.com/MingLLuo/OW-ChCCA-KEM/internal"
+	"github.com/MingLLuo/OW-ChCCA-KEM/pkg"
+	"github.com/kr/pretty"
 	"testing"
 )
 
 func TestKEMConsistency(t *testing.T) {
 	// Test with all parameter sets
-	testParams := internal.ListParameterSets()
+	testParams := pkg.ListParameterSets()
 
 	for _, paramName := range testParams {
-		params, err := internal.GetParameterSet(paramName)
+		params, err := pkg.GetParameterSet(paramName)
 		if err != nil {
 			t.Fatalf("GetParameterSet failed: %v", err)
 		}
@@ -45,7 +46,7 @@ func TestKEMConsistency(t *testing.T) {
 
 func TestKEMSerialization(t *testing.T) {
 	// Use the lowest parameter set for simplicity
-	params := internal.GetDefaultParameterSet()
+	params := pkg.GetDefaultParameterSet()
 
 	// Generate a key pair
 	pk1, sk1, err := GenerateKeyPair(params)
@@ -102,7 +103,7 @@ func TestKEMSerialization(t *testing.T) {
 
 func TestInvalidInputs(t *testing.T) {
 	// Use the lowest parameter set for simplicity
-	params := internal.GetDefaultParameterSet()
+	params := pkg.GetDefaultParameterSet()
 
 	// Generate a key pair
 	pk, sk, err := GenerateKeyPair(params)
@@ -139,9 +140,14 @@ func TestInvalidInputs(t *testing.T) {
 }
 
 func BenchmarkKEM(b *testing.B) {
-	testParams := internal.ListParameterSets()
+	testParams := pkg.ListParameterSets()
 	for _, paramName := range testParams {
-		params, err := internal.GetParameterSet(paramName)
+		params, _ := pkg.GetParameterSet(paramName)
+		pretty.Println(params)
+	}
+	b.ResetTimer()
+	for _, paramName := range testParams {
+		params, err := pkg.GetParameterSet(paramName)
 		if err != nil {
 			b.Fatalf("GetParameterSet failed: %v", err)
 		}

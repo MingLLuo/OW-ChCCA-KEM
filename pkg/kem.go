@@ -1,4 +1,4 @@
-package internal
+package pkg
 
 import (
 	"bytes"
@@ -6,12 +6,12 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"github.com/MingLLuo/OW-ChCCA-KEM/internal/arithmetic"
+	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/arithmetic"
 	"github.com/tuneinsight/lattigo/v6/ring"
 	"io"
 	"math/big"
 
-	"github.com/MingLLuo/OW-ChCCA-KEM/internal/sha3"
+	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/sha3"
 )
 
 // Common errors that may be returned

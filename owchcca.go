@@ -2,13 +2,13 @@ package owchcca
 
 import (
 	"crypto/rand"
-	"github.com/MingLLuo/OW-ChCCA-KEM/internal"
+	"github.com/MingLLuo/OW-ChCCA-KEM/pkg"
 )
 
-type KEM = internal.OwChCCAKEM
-type PublicKey = internal.PublicKey
-type PrivateKey = internal.PrivateKey
-type Parameters = internal.Parameters
+type KEM = pkg.OwChCCAKEM
+type PublicKey = pkg.PublicKey
+type PrivateKey = pkg.PrivateKey
+type Parameters = pkg.Parameters
 
 // KEM defines the interface for a key encapsulation mechanism
 //type KEM interface {
@@ -39,7 +39,7 @@ type Parameters = internal.Parameters
 //	Bytes() ([]byte, error)
 //
 //	// Parameters returns the parameters used by this public key
-//	Parameters() internal.Parameters
+//	Parameters() pkg.Parameters
 //
 //	// Equal returns true if the public keys are equal
 //	Equal(PublicKey) bool
