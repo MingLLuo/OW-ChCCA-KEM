@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"runtime"
+	"sync"
 
 	"github.com/tuneinsight/lattigo/v6/ring"
 	"github.com/tuneinsight/lattigo/v6/utils/sampling"
@@ -23,6 +25,8 @@ var (
 	// ErrDeserializationError indicates an error during deserialization
 	ErrDeserializationError = errors.New("deserialization error")
 )
+
+var ParallelStart = 10
 
 // Vector represents a vector of big.Int Values with operations in a finite field
 type Vector struct {
@@ -101,6 +105,9 @@ func (v *Vector) Add(other *Vector) (*Vector, error) {
 	if v.Length() != other.Length() {
 		return nil, ErrInvalidDimensions
 	}
+	if v.Length() > ParallelStart {
+		return v.ParallelAdd(other)
+	}
 
 	result := NewVector(v.Length(), v.Modulus)
 	for i := range v.Values {
@@ -108,6 +115,35 @@ func (v *Vector) Add(other *Vector) (*Vector, error) {
 		result.Values[i] = sum.Mod(sum, v.Modulus)
 	}
 
+	return result, nil
+}
+
+// ParallelAdd Parallel vector addition
+func (v *Vector) ParallelAdd(other *Vector) (*Vector, error) {
+	if v.Length() != other.Length() {
+		return nil, ErrInvalidDimensions
+	}
+
+	result := NewVector(v.Length(), v.Modulus)
+	var wg sync.WaitGroup
+	numCPU := runtime.NumCPU()
+	rowsPerWorker := max(1, v.Length()/numCPU)
+
+	for w := 0; w < numCPU; w++ {
+		wg.Add(1)
+		startRow := w * rowsPerWorker
+		endRow := min(v.Length(), (w+1)*rowsPerWorker)
+
+		go func(startRow, endRow int) {
+			defer wg.Done()
+			for i := startRow; i < endRow; i++ {
+				sum := new(big.Int).Add(v.Values[i], other.Values[i])
+				result.Values[i] = sum.Mod(sum, v.Modulus)
+			}
+		}(startRow, endRow)
+	}
+
+	wg.Wait()
 	return result, nil
 }
 
@@ -233,7 +269,7 @@ func (v *Vector) EncodedSize() int {
 }
 
 // Equal checks if two matrices are equal
-func (m Matrix) Equal(other Matrix) bool {
+func (m *Matrix) Equal(other Matrix) bool {
 	if m.Rows != other.Rows || m.Cols != other.Cols {
 		return false
 	}
@@ -250,17 +286,20 @@ func (m Matrix) Equal(other Matrix) bool {
 }
 
 // Get returns the value at the specified position
-func (m Matrix) Get(row, col int) *big.Int {
+func (m *Matrix) Get(row, col int) *big.Int {
 	return new(big.Int).Set(m.Values[row][col])
 }
 
 // Set sets the value at the specified position
-func (m Matrix) Set(row, col int, value *big.Int) {
+func (m *Matrix) Set(row, col int, value *big.Int) {
 	m.Values[row][col] = new(big.Int).Mod(value, m.Modulus)
 }
 
 // Transpose returns the transpose of the matrix
-func (m Matrix) Transpose() (Matrix, error) {
+func (m *Matrix) Transpose() (Matrix, error) {
+	if m.Rows > ParallelStart || m.Cols > ParallelStart {
+		return m.ParallelTranspose()
+	}
 	result := NewMatrix(m.Cols, m.Rows, m.Modulus)
 
 	for i := 0; i < m.Rows; i++ {
@@ -272,8 +311,35 @@ func (m Matrix) Transpose() (Matrix, error) {
 	return result, nil
 }
 
+func (m *Matrix) ParallelTranspose() (Matrix, error) {
+	result := NewMatrix(m.Cols, m.Rows, m.Modulus)
+
+	numCPU := runtime.NumCPU()
+	rowsPerWorker := max(1, m.Rows/numCPU)
+
+	var wg sync.WaitGroup
+	for w := 0; w < numCPU && w*rowsPerWorker < m.Rows; w++ {
+		wg.Add(1)
+		startRow := w * rowsPerWorker
+		endRow := min(m.Rows, (w+1)*rowsPerWorker)
+
+		go func(startRow, endRow int) {
+			defer wg.Done()
+
+			for i := startRow; i < endRow; i++ {
+				for j := 0; j < m.Cols; j++ {
+					result.Values[j][i] = new(big.Int).Set(m.Values[i][j])
+				}
+			}
+		}(startRow, endRow)
+	}
+
+	wg.Wait()
+	return result, nil
+}
+
 // Multiply multiplies two matrices
-func (m Matrix) Multiply(other Matrix) (Matrix, error) {
+func (m *Matrix) Multiply(other Matrix) (Matrix, error) {
 	if m.Cols != other.Rows {
 		return Matrix{}, ErrInvalidDimensions
 	}
@@ -297,9 +363,12 @@ func (m Matrix) Multiply(other Matrix) (Matrix, error) {
 }
 
 // MultiplyVector multiplies a matrix by a vector
-func (m Matrix) MultiplyVector(v *Vector) (*Vector, error) {
+func (m *Matrix) MultiplyVector(v *Vector) (*Vector, error) {
 	if m.Cols != v.Length() {
 		return nil, ErrInvalidDimensions
+	}
+	if m.Cols > ParallelStart {
+		return m.ParallelMultiplyVector(v)
 	}
 
 	result := NewVector(m.Rows, m.Modulus)
@@ -318,8 +387,43 @@ func (m Matrix) MultiplyVector(v *Vector) (*Vector, error) {
 	return result, nil
 }
 
+// ParallelMultiplyVector Parallel matrix-vector multiplication
+func (m *Matrix) ParallelMultiplyVector(v *Vector) (*Vector, error) {
+	if m.Cols != v.Length() {
+		return nil, ErrInvalidDimensions
+	}
+
+	result := NewVector(m.Rows, m.Modulus)
+	var wg sync.WaitGroup
+	numCPU := runtime.NumCPU()
+	rowsPerWorker := max(1, m.Rows/numCPU)
+
+	for w := 0; w < numCPU; w++ {
+		wg.Add(1)
+		startRow := w * rowsPerWorker
+		endRow := min(m.Rows, (w+1)*rowsPerWorker)
+
+		go func(startRow, endRow int) {
+			defer wg.Done()
+			for i := startRow; i < endRow; i++ {
+				sum := new(big.Int)
+				for j := 0; j < m.Cols; j++ {
+					product := new(big.Int).Mul(m.Values[i][j], v.Values[j])
+					product.Mod(product, m.Modulus)
+					sum.Add(sum, product)
+					sum.Mod(sum, m.Modulus)
+				}
+				result.Values[i] = sum
+			}
+		}(startRow, endRow)
+	}
+
+	wg.Wait()
+	return result, nil
+}
+
 // MarshalBinary implements the encoding.BinaryMarshaler interface
-func (m Matrix) MarshalBinary() ([]byte, error) {
+func (m *Matrix) MarshalBinary() ([]byte, error) {
 	// Calculate the size needed for serialization
 	elementSize := (m.Modulus.BitLen() + 7) / 8 // Number of bytes needed to represent each element
 	totalSize := 8 + m.Rows*m.Cols*elementSize  // 8 bytes for dimensions + space for elements
@@ -386,7 +490,7 @@ func (m *Matrix) UnmarshalBinary(data []byte) error {
 }
 
 // EncodedSize returns the size of the encoded matrix in bytes
-func (m Matrix) EncodedSize() int {
+func (m *Matrix) EncodedSize() int {
 	elementSize := (m.Modulus.BitLen() + 7) / 8
 	return 8 + m.Rows*m.Cols*elementSize
 }
