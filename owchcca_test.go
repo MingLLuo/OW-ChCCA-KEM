@@ -146,7 +146,6 @@ func BenchmarkKEM(b *testing.B) {
 		params, _ := pkg.GetParameterSet(paramName)
 		pretty.Println(params)
 	}
-	b.ResetTimer()
 	for _, paramName := range testParams {
 		params, err := pkg.GetParameterSet(paramName)
 		if err != nil {

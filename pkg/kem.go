@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"runtime"
+	"sync"
 
 	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/arithmetic"
 	"github.com/tuneinsight/lattigo/v6/ring"
@@ -282,12 +284,7 @@ func (kem *OwChCCAKEM) GenerateKeyPair(randSource io.Reader) (*PublicKey, *Priva
 	}
 
 	// Generate the shared matrix A
-	a := arithmetic.NewMatrix(n, m, modulus)
-	uniformSampler := ring.NewUniformSampler(randSource, pRing)
-	polyVecA := arithmetic.InitPolyVecWithSampler(n, uniformSampler)
-	for i := range n {
-		pRing.PolyToBigint(polyVecA[i], 1, a.Values[i])
-	}
+	polyVecA, a := ParallelCalculatePolyVecAWithA(n, m, modulus, ring.NewUniformSampler(randSource, pRing), pRing)
 
 	// Initialize public and private key structures
 	pk := &PublicKey{
@@ -307,28 +304,15 @@ func (kem *OwChCCAKEM) GenerateKeyPair(randSource io.Reader) (*PublicKey, *Priva
 	sk.b = bByte[0]&1 == 1
 
 	// Sample error matrix Zb from Gaussian distribution
-	sk.zb = arithmetic.NewMatrix(m, lambda, modulus)
-	gaussianSampler := ring.NewGaussianSampler(randSource, pRing, ring.DiscreteGaussian{Sigma: alpha, Bound: float64(modulus.Int64())}, false)
-	PolyVecZbT := arithmetic.InitPolyVecWithSampler(lambda, gaussianSampler)
-	for i := range lambda {
-		coefficT := arithmetic.NewVector(m, modulus)
-		pRing.PolyToBigint(PolyVecZbT[i], 1, coefficT.Values)
-		for j := range m {
-			sk.zb.Values[j][i] = coefficT.Values[j]
-		}
-	}
+	PolyVecZbT, zb := ParallelCalculatePolyVecZbTWithZb(m, lambda, modulus,
+		ring.NewGaussianSampler(randSource, pRing,
+			ring.DiscreteGaussian{Sigma: alpha, Bound: float64(modulus.Int64())}, false), pRing)
+	sk.zb = zb
 
 	// Calculate AZ_b, polyVecA size n x m, polyVecZbT size lambda x m
-	aZb := arithmetic.NewMatrix(n, lambda, modulus)
-	tmpPoly := pRing.NewPoly()
-	for i := range n {
-		coeffics := arithmetic.NewVector(m, modulus)
-		for j := range lambda {
-			// Az[i][j] = row i of A * Column j of Zb = Sum(polyVecA[i] * polyVecZbT[j])
-			pRing.MulCoeffsBarrett(polyVecA[i], PolyVecZbT[j], tmpPoly)
-			pRing.PolyToBigint(tmpPoly, 1, coeffics.Values)
-			aZb.Values[i][j] = coeffics.Sum()
-		}
+	aZb, err := ParallelCalculateAZb(polyVecA, PolyVecZbT, n, m, lambda, modulus, pRing)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to calculate A*Zb^T: %w", err)
 	}
 
 	// Generate a random matrix Zq
@@ -347,6 +331,106 @@ func (kem *OwChCCAKEM) GenerateKeyPair(randSource io.Reader) (*PublicKey, *Priva
 	}
 
 	return pk, sk, nil
+}
+
+// ParallelCalculatePolyVecAWithA Sample the matrix A in parallel
+func ParallelCalculatePolyVecAWithA(n, m int, modulus *big.Int, sampler ring.Sampler, pRing *ring.Ring) ([]ring.Poly, arithmetic.Matrix) {
+	a := arithmetic.NewMatrix(n, m, modulus)
+	polyVecA := make([]ring.Poly, n)
+	numCPU := runtime.NumCPU()
+	rowsPerWorker := max(1, n/numCPU)
+
+	var wg sync.WaitGroup
+	for w := 0; w < numCPU && w*rowsPerWorker < n; w++ {
+		wg.Add(1)
+		startRow := w * rowsPerWorker
+		endRow := min(n, (w+1)*rowsPerWorker)
+
+		go func(startRow, endRow int) {
+			defer wg.Done()
+			for i := startRow; i < endRow; i++ {
+				polyVecA[i] = sampler.ReadNew()
+				pRing.PolyToBigint(polyVecA[i], 1, a.Values[i])
+			}
+		}(startRow, endRow)
+	}
+	wg.Wait()
+	select {
+	default:
+		return polyVecA, a
+	}
+}
+
+// ParallelCalculatePolyVecZbTWithZb Sample the matrix Zb^T in parallel
+// TODO: check if swap the loop order will improve the performance, since m > n > lambda
+func ParallelCalculatePolyVecZbTWithZb(m, lambda int, modulus *big.Int, sampler ring.Sampler, pRing *ring.Ring) ([]ring.Poly, arithmetic.Matrix) {
+	polyVecZbT := make([]ring.Poly, lambda)
+	zb := arithmetic.NewMatrix(m, lambda, modulus)
+	numCPU := runtime.NumCPU()
+	rowsPerWorker := max(1, lambda/numCPU)
+
+	var wg sync.WaitGroup
+	for w := 0; w < numCPU && w*rowsPerWorker < lambda; w++ {
+		wg.Add(1)
+		startRow := w * rowsPerWorker
+		endRow := min(lambda, (w+1)*rowsPerWorker)
+
+		go func(startRow, endRow int) {
+			defer wg.Done()
+			for i := startRow; i < endRow; i++ {
+				polyVecZbT[i] = sampler.ReadNew()
+				coefficT := arithmetic.NewVector(m, modulus)
+				pRing.PolyToBigint(polyVecZbT[i], 1, coefficT.Values)
+				for j := range m {
+					zb.Values[j][i] = coefficT.Values[j]
+				}
+			}
+		}(startRow, endRow)
+	}
+	wg.Wait()
+	select {
+	default:
+		return polyVecZbT, zb
+	}
+}
+
+// ParallelCalculateAZb calculates the matrix A*Zb^T in parallel
+func ParallelCalculateAZb(polyVecA []ring.Poly, PolyVecZbT []ring.Poly, n, m, lambda int, modulus *big.Int, pRing *ring.Ring) (arithmetic.Matrix, error) {
+	aZb := arithmetic.NewMatrix(n, lambda, modulus)
+	numCPU := runtime.NumCPU()
+	rowsPerWorker := max(1, n/numCPU)
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, numCPU)
+	for w := 0; w < numCPU && w*rowsPerWorker < n; w++ {
+		wg.Add(1)
+		startRow := w * rowsPerWorker
+		endRow := min(n, (w+1)*rowsPerWorker)
+
+		go func(startRow, endRow int) {
+			defer wg.Done()
+			tmpPoly := pRing.NewPoly()
+
+			for i := startRow; i < endRow; i++ {
+				// Level is m
+				coeffics := arithmetic.NewVector(m, modulus)
+
+				for j := range lambda {
+					// Az[i][j] = row i of A * Column j of Zb = Sum(polyVecA[i] * polyVecZbT[j])
+					pRing.MulCoeffsBarrett(polyVecA[i], PolyVecZbT[j], tmpPoly)
+					pRing.PolyToBigint(tmpPoly, 1, coeffics.Values)
+					aZb.Values[i][j] = coeffics.Sum()
+				}
+			}
+		}(startRow, endRow)
+	}
+	wg.Wait()
+	select {
+	case err := <-errChan:
+		return arithmetic.Matrix{}, err
+	default:
+		return aZb, nil
+	}
 }
 
 // Encapsulate generates a shared key and encapsulates it
