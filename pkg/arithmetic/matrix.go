@@ -126,13 +126,11 @@ func (v *Vector) ParallelAdd(other *Vector) (*Vector, error) {
 
 	result := NewVector(v.Length(), v.Modulus)
 	var wg sync.WaitGroup
-	numCPU := runtime.NumCPU()
-	rowsPerWorker := max(1, v.Length()/numCPU)
+	rowsPerWorker := max(1, v.Length()/runtime.NumCPU())
 
-	for w := 0; w < numCPU; w++ {
+	for startRow := 0; startRow < v.Length(); startRow += rowsPerWorker {
 		wg.Add(1)
-		startRow := w * rowsPerWorker
-		endRow := min(v.Length(), (w+1)*rowsPerWorker)
+		endRow := min(v.Length(), startRow+rowsPerWorker)
 
 		go func(startRow, endRow int) {
 			defer wg.Done()
@@ -314,14 +312,12 @@ func (m *Matrix) Transpose() (Matrix, error) {
 func (m *Matrix) ParallelTranspose() (Matrix, error) {
 	result := NewMatrix(m.Cols, m.Rows, m.Modulus)
 
-	numCPU := runtime.NumCPU()
-	rowsPerWorker := max(1, m.Rows/numCPU)
+	rowsPerWorker := max(1, m.Rows/runtime.NumCPU())
 
 	var wg sync.WaitGroup
-	for w := 0; w < numCPU && w*rowsPerWorker < m.Rows; w++ {
+	for startRow := 0; startRow < m.Rows; startRow += rowsPerWorker {
 		wg.Add(1)
-		startRow := w * rowsPerWorker
-		endRow := min(m.Rows, (w+1)*rowsPerWorker)
+		endRow := min(m.Rows, startRow+rowsPerWorker)
 
 		go func(startRow, endRow int) {
 			defer wg.Done()
@@ -395,13 +391,11 @@ func (m *Matrix) ParallelMultiplyVector(v *Vector) (*Vector, error) {
 
 	result := NewVector(m.Rows, m.Modulus)
 	var wg sync.WaitGroup
-	numCPU := runtime.NumCPU()
-	rowsPerWorker := max(1, m.Rows/numCPU)
+	rowsPerWorker := max(1, m.Rows/runtime.NumCPU())
 
-	for w := 0; w < numCPU; w++ {
+	for startRow := 0; startRow < m.Rows; startRow += rowsPerWorker {
 		wg.Add(1)
-		startRow := w * rowsPerWorker
-		endRow := min(m.Rows, (w+1)*rowsPerWorker)
+		endRow := min(m.Rows, startRow+rowsPerWorker)
 
 		go func(startRow, endRow int) {
 			defer wg.Done()
@@ -553,6 +547,7 @@ func GenerateSampleDVector(length int, alpha_ float64, rho []byte, modulus *big.
 func rand(randSource io.Reader, modulus *big.Int) (*big.Int, error) {
 	// The number of bytes needed to represent numbers up to Modulus
 	numBytes := (modulus.BitLen() + 7) / 8
+	excessBits := uint(numBytes*8 - modulus.BitLen())
 	buf := make([]byte, numBytes)
 
 	for {
@@ -561,8 +556,10 @@ func rand(randSource io.Reader, modulus *big.Int) (*big.Int, error) {
 			return nil, err
 		}
 
-		// Ensure the most significant bit is zero to avoid bias
-		buf[0] &= 0x7F
+		// Clear unused high bits then use rejection sampling to avoid distribution bias.
+		if excessBits > 0 {
+			buf[0] &= byte(0xFF >> excessBits)
+		}
 
 		// Convert to big.Int and check if it's in range
 		val := new(big.Int).SetBytes(buf)

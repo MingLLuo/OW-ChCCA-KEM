@@ -211,7 +211,7 @@ func CalculateParameters(lambda SecurityLevel) Parameters {
 	for m = int(math.Exp2(float64(minLogM))); m <= int(math.Exp2(float64(maxLogM))); m = m * 2 {
 		// find q
 		// logQ = m / (2 * n)
-		logQ = min(60, max(62, m/(2*n)))
+		logQ = max(60, min(62, m/(2*n)))
 		nttGenerator := NewBigNTTFriendlyPrimesGenerator(logQ+1, new(big.Int).SetInt64(int64(2*m)))
 		q, err = nttGenerator.NextDownstreamPrime()
 		if err != nil {
@@ -296,8 +296,8 @@ func (p Parameters) CiphertextSize() int {
 	elementSize := (modulus.BitLen() + 7) / 8
 	cbSize := level / 8
 	xSize := 4 + m*elementSize
-	hatHbSize := level / 8
-	return 2*cbSize + xSize + 2*hatHbSize
+	hatHSize := 4 + level*elementSize
+	return 2*cbSize + xSize + 2*hatHSize
 }
 
 func (p Parameters) SharedKeySize() int {

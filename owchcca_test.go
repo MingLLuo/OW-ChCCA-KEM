@@ -3,10 +3,10 @@ package owchcca
 import (
 	"bytes"
 	"crypto/rand"
+	"errors"
 	"testing"
 
 	"github.com/MingLLuo/OW-ChCCA-KEM/pkg"
-	"github.com/kr/pretty"
 )
 
 func TestKEMConsistency(t *testing.T) {
@@ -24,11 +24,23 @@ func TestKEMConsistency(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GenerateKeyPair failed: %v", err)
 			}
+			if got, want := len(mustBytes(t, pk)), params.KeyParams.PublicKeySize; got != want {
+				t.Fatalf("public key serialized size mismatch: got=%d want=%d", got, want)
+			}
+			if got, want := len(mustBytes(t, sk)), params.KeyParams.PrivateKeySize; got != want {
+				t.Fatalf("private key serialized size mismatch: got=%d want=%d", got, want)
+			}
 
 			// Encapsulate a shared key
 			ct, ss1, err := Encapsulate(pk)
 			if err != nil {
 				t.Fatalf("Encapsulate failed: %v", err)
+			}
+			if got, want := len(ct), params.KeyParams.CiphertextSize; got != want {
+				t.Fatalf("ciphertext size mismatch: got=%d want=%d", got, want)
+			}
+			if got, want := len(ss1), params.KeyParams.SharedKeySize; got != want {
+				t.Fatalf("shared key size mismatch: got=%d want=%d", got, want)
 			}
 
 			// Decapsulate the shared key
@@ -60,10 +72,16 @@ func TestKEMSerialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to serialize public key: %v", err)
 	}
+	if got, want := len(pkBytes), params.KeyParams.PublicKeySize; got != want {
+		t.Fatalf("public key serialized size mismatch: got=%d want=%d", got, want)
+	}
 
 	skBytes, err := sk1.Bytes()
 	if err != nil {
 		t.Fatalf("Failed to serialize private key: %v", err)
+	}
+	if got, want := len(skBytes), params.KeyParams.PrivateKeySize; got != want {
+		t.Fatalf("private key serialized size mismatch: got=%d want=%d", got, want)
 	}
 
 	// Parse the keys
@@ -91,6 +109,12 @@ func TestKEMSerialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encapsulate failed: %v", err)
 	}
+	if got, want := len(ct), params.KeyParams.CiphertextSize; got != want {
+		t.Fatalf("ciphertext size mismatch: got=%d want=%d", got, want)
+	}
+	if got, want := len(ss1), params.KeyParams.SharedKeySize; got != want {
+		t.Fatalf("shared key size mismatch: got=%d want=%d", got, want)
+	}
 
 	ss2, err := Decapsulate(sk2, ct)
 	if err != nil {
@@ -114,7 +138,9 @@ func TestInvalidInputs(t *testing.T) {
 
 	// Create an invalid ciphertext
 	invalidCT := make([]byte, params.KeyParams.CiphertextSize+1)
-	rand.Read(invalidCT)
+	if _, err := rand.Read(invalidCT); err != nil {
+		t.Fatalf("rand.Read failed: %v", err)
+	}
 
 	// Try to decapsulate with an invalid ciphertext
 	_, err = Decapsulate(sk, invalidCT)
@@ -140,12 +166,42 @@ func TestInvalidInputs(t *testing.T) {
 	}
 }
 
+func TestNilAndTruncatedInputs(t *testing.T) {
+	params := pkg.GetDefaultParameterSet()
+	pk, sk, err := GenerateKeyPair(params)
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+
+	if _, _, err := Encapsulate(nil); !errors.Is(err, pkg.ErrInvalidPublicKey) {
+		t.Fatalf("Encapsulate(nil) error mismatch: %v", err)
+	}
+
+	if _, err := Decapsulate(nil, nil); !errors.Is(err, pkg.ErrInvalidPrivateKey) {
+		t.Fatalf("Decapsulate(nil) error mismatch: %v", err)
+	}
+
+	if _, err := ParsePublicKey([]byte{1, 2, 3}, nil); !errors.Is(err, pkg.ErrParameterValidation) {
+		t.Fatalf("ParsePublicKey nil params error mismatch: %v", err)
+	}
+
+	if _, err := ParsePrivateKey([]byte{1, 2, 3}, nil); !errors.Is(err, pkg.ErrInvalidPublicKey) {
+		t.Fatalf("ParsePrivateKey nil pk error mismatch: %v", err)
+	}
+
+	pkBytes := mustBytes(t, pk)
+	if _, err := ParsePublicKey(pkBytes[:len(pkBytes)-1], &params); err == nil {
+		t.Fatalf("ParsePublicKey should reject truncated input")
+	}
+
+	skBytes := mustBytes(t, sk)
+	if _, err := ParsePrivateKey(skBytes[:len(skBytes)-1], pk); err == nil {
+		t.Fatalf("ParsePrivateKey should reject truncated input")
+	}
+}
+
 func BenchmarkKEM(b *testing.B) {
 	testParams := pkg.ListParameterSets()
-	for _, paramName := range testParams {
-		params, _ := pkg.GetParameterSet(paramName)
-		pretty.Println(params)
-	}
 	for _, paramName := range testParams {
 		params, err := pkg.GetParameterSet(paramName)
 		if err != nil {
@@ -191,4 +247,13 @@ func BenchmarkKEM(b *testing.B) {
 			}
 		})
 	}
+}
+
+func mustBytes(t *testing.T, v interface{ Bytes() ([]byte, error) }) []byte {
+	t.Helper()
+	b, err := v.Bytes()
+	if err != nil {
+		t.Fatalf("Bytes failed: %v", err)
+	}
+	return b
 }

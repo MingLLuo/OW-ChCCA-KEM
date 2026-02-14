@@ -1,24 +1,23 @@
-A repository for One-Way Checkable CCA(Chosen-Cipherteext Attack) KEM, implemented in Golang.
+OW-ChCCA-KEM implementation in Go.
 
-Paper: [[PWZ2023]Lattice-based Authenticated Key Exchange with Tight Security](https://eprint.iacr.org/2023/823)
+Reference paper:
+[[PWZ2023] Lattice-based Authenticated Key Exchange with Tight Security](https://eprint.iacr.org/2023/823)
 
-For the first time, we will use some package in [tuneinsight/lattigo](https://github.com/tuneinsight/lattigo) to implement the KEM.
+This repository uses [tuneinsight/lattigo](https://github.com/tuneinsight/lattigo) for NTT/ring arithmetic.
 
-Following the analysis in the paper,the parameters have to satisfy the following conditions.
+## Parameter Notes
 
-- The scheme is paramterized by **matrix dimensions** n, m, k $\in \mathbb{N}$, a **modulus** $q \in \mathbb{N}$, **security parameter** $\lambda \in \mathbb{N}$ and (Gaussian) widths $\alpha, \alpha', \gamma, \eta \in \mathbb{R}$.
-- $q$ is prime, $m \geq 2n \log q$, $\alpha \geq \omega(\sqrt{\log m})$
-- $\alpha,\alpha' \geq \omega(\sqrt{\log m})$
-- $n\log(2\eta + 1) - (k + 3\lambda) \log q \geq \lambda \log q + \Omega(n)$
-- $\alpha' \geq \beta\eta n mq, \beta q = n$
-- For correctness, $4\alpha' \alpha m < q$
+The paper models the scheme with matrix dimensions `n, m, k`, modulus `q`, security parameter `lambda`, and Gaussian widths `alpha, alpha', gamma, eta`.
 
-Given $\lambda$, we could conservatively use the following parameter setting.
-- $n = 70\lambda, n^6  < q \leq n^7, \eta = \gamma = \alpha = \sqrt n$
-- $k = \lambda, m = 2n\log q,a' = n^{2.5}m$
+The implementation includes practical parameter presets and validation checks. Current defaults are engineering-oriented and may differ from strict paper settings.
 
-We will change them to adapt the real world circumstances.
+## Testing
 
-Code implementation is personal, still in the process of implementation
+- Default test suite:
+  - `go test ./...`
+- Race check for KEM core path:
+  - `go test -race ./pkg -run TestOwChCCAKEM_Decapsulate -count=1`
+- High-parameter demonstration tests (not run by default):
+  - `go test -tags highparams ./pkg -run TestCalculateParametersHighLevelDemo -v`
 
-The Param here is not the same as the paper, we will change it later.
+High-parameter tests are intentionally isolated from the default path to keep CI/local feedback fast and stable.

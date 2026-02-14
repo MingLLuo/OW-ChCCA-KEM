@@ -13,6 +13,7 @@ import (
 
 	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/arithmetic"
 	"github.com/tuneinsight/lattigo/v6/ring"
+	"github.com/tuneinsight/lattigo/v6/utils/sampling"
 
 	"github.com/MingLLuo/OW-ChCCA-KEM/pkg/sha3"
 )
@@ -52,6 +53,9 @@ type PrivateKey struct {
 
 // Bytes returns the serialized form of the public key
 func (pk *PublicKey) Bytes() ([]byte, error) {
+	if pk == nil {
+		return nil, ErrInvalidPublicKey
+	}
 	var buf bytes.Buffer
 
 	// Write matrix A
@@ -90,6 +94,9 @@ func (pk *PublicKey) Parameters() Parameters {
 
 // Equal returns true if the public keys are equal
 func (pk *PublicKey) Equal(other *PublicKey) bool {
+	if pk == nil || other == nil {
+		return false
+	}
 	otherPK := other
 
 	// Compare parameters
@@ -148,15 +155,18 @@ func (pk *PublicKey) UnmarshalBinary(data []byte) error {
 
 // Bytes returns the serialized form of the private key
 func (sk *PrivateKey) Bytes() ([]byte, error) {
+	if sk == nil || sk.Pk == nil {
+		return nil, ErrInvalidPrivateKey
+	}
 	var buf bytes.Buffer
 
 	// Write public key
 	pkBytes, err := sk.Pk.Bytes()
-	if len(pkBytes) != sk.Pk.Params.KeyParams.PublicKeySize {
-		return nil, fmt.Errorf("%w: invalid public key size", ErrSerializationError)
-	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSerializationError, err)
+	}
+	if len(pkBytes) != sk.Pk.Params.KeyParams.PublicKeySize {
+		return nil, fmt.Errorf("%w: invalid public key size", ErrSerializationError)
 	}
 	if _, err = buf.Write(pkBytes); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSerializationError, err)
@@ -190,6 +200,9 @@ func (sk *PrivateKey) Public() *PublicKey {
 
 // Equal returns true if the private keys are equal
 func (sk *PrivateKey) Equal(other *PrivateKey) bool {
+	if sk == nil || other == nil || sk.Pk == nil || other.Pk == nil {
+		return false
+	}
 	otherSK := other
 
 	// Compare b flag
@@ -208,30 +221,33 @@ func (sk *PrivateKey) Equal(other *PrivateKey) bool {
 
 // UnmarshalBinary deserializes a private key
 func (sk *PrivateKey) UnmarshalBinary(data []byte) error {
+	if sk == nil || sk.Pk == nil {
+		return ErrInvalidPrivateKey
+	}
 	// Get parameters from public key
 	params := sk.Pk.Parameters()
 	m := params.LatticeParams.M
 	lambda := params.LatticeParams.Lambda
 	modulus := params.LatticeParams.Q
-	// Restore public key
-	pkSize := params.KeyParams.PublicKeySize
-	pkData := data[:pkSize]
-	err := sk.Pk.UnmarshalBinary(pkData)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDeserializationError, err)
-	}
 
 	// Calculate expected size
+	pkSize := params.KeyParams.PublicKeySize
 	zbSize := 8 + m*lambda*((modulus.BitLen()+7)/8)
-	expectedSize := zbSize + 1 // +1 for the b flag
+	expectedSize := pkSize + zbSize + 1 // +1 for the b flag
 
 	if len(data) < expectedSize {
 		return fmt.Errorf("%w: insufficient data", ErrDeserializationError)
 	}
 
+	// Restore public key
+	pkData := data[:pkSize]
+	if err := sk.Pk.UnmarshalBinary(pkData); err != nil {
+		return fmt.Errorf("%w: %v", ErrDeserializationError, err)
+	}
+
 	// Parse Zb matrix
 	sk.zb = arithmetic.NewMatrix(m, lambda, modulus)
-	if err := sk.zb.UnmarshalBinary(data[pkSize:]); err != nil {
+	if err := sk.zb.UnmarshalBinary(data[pkSize : pkSize+zbSize]); err != nil {
 		return fmt.Errorf("%w: %v", ErrDeserializationError, err)
 	}
 
@@ -283,8 +299,11 @@ func (kem *OwChCCAKEM) GenerateKeyPair(randSource io.Reader) (*PublicKey, *Priva
 		return nil, nil, fmt.Errorf("failed to create ring: %w", err)
 	}
 
-	// Generate the shared matrix A
-	polyVecA, a := ParallelCalculatePolyVecAWithA(n, m, modulus, ring.NewUniformSampler(randSource, pRing), pRing)
+	// Generate the shared matrix A.
+	polyVecA, a, err := parallelCalculatePolyVecAWithAFromReader(n, m, modulus, randSource, pRing)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to sample matrix A: %w", err)
+	}
 
 	// Initialize public and private key structures
 	pk := &PublicKey{
@@ -303,14 +322,15 @@ func (kem *OwChCCAKEM) GenerateKeyPair(randSource io.Reader) (*PublicKey, *Priva
 	}
 	sk.b = bByte[0]&1 == 1
 
-	// Sample error matrix Zb from Gaussian distribution
-	PolyVecZbT, zb := ParallelCalculatePolyVecZbTWithZb(m, lambda, modulus,
-		ring.NewGaussianSampler(randSource, pRing,
-			ring.DiscreteGaussian{Sigma: alpha, Bound: float64(modulus.Int64())}, false), pRing)
+	// Sample error matrix Zb from Gaussian distribution.
+	polyVecZbT, zb, err := parallelCalculatePolyVecZbTWithZbFromReader(m, lambda, modulus, alpha, randSource, pRing)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to sample Zb: %w", err)
+	}
 	sk.zb = zb
 
-	// Calculate AZ_b, polyVecA size n x m, polyVecZbT size lambda x m
-	aZb, err := ParallelCalculateAZb(polyVecA, PolyVecZbT, n, m, lambda, modulus, pRing)
+	// Calculate A*Zb^T.
+	aZb, err := ParallelCalculateAZb(polyVecA, polyVecZbT, n, m, lambda, modulus, pRing)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to calculate A*Zb^T: %w", err)
 	}
@@ -333,32 +353,152 @@ func (kem *OwChCCAKEM) GenerateKeyPair(randSource io.Reader) (*PublicKey, *Priva
 	return pk, sk, nil
 }
 
+func workerRanges(total int) [][2]int {
+	if total <= 0 {
+		return nil
+	}
+	workers := runtime.NumCPU()
+	if workers > total {
+		workers = total
+	}
+	chunkSize := max(1, (total+workers-1)/workers)
+	ranges := make([][2]int, 0, workers)
+	for start := 0; start < total; start += chunkSize {
+		ranges = append(ranges, [2]int{start, min(total, start+chunkSize)})
+	}
+	return ranges
+}
+
+func readWorkerSeeds(randSource io.Reader, workers int) ([][]byte, error) {
+	const seedSize = 64
+	seeds := make([][]byte, workers)
+	for i := 0; i < workers; i++ {
+		seed := make([]byte, seedSize)
+		if _, err := io.ReadFull(randSource, seed); err != nil {
+			return nil, err
+		}
+		seeds[i] = seed
+	}
+	return seeds, nil
+}
+
+func parallelCalculatePolyVecAWithAFromReader(n, m int, modulus *big.Int, randSource io.Reader, pRing *ring.Ring) ([]ring.Poly, arithmetic.Matrix, error) {
+	polyVecA := make([]ring.Poly, n)
+	a := arithmetic.NewMatrix(n, m, modulus)
+	ranges := workerRanges(n)
+	seeds, err := readWorkerSeeds(randSource, len(ranges))
+	if err != nil {
+		return nil, arithmetic.Matrix{}, err
+	}
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, 1)
+	for idx, r := range ranges {
+		start, end := r[0], r[1]
+		seed := seeds[idx]
+		wg.Add(1)
+		go func(start, end int, seed []byte) {
+			defer wg.Done()
+
+			prng, err := sampling.NewKeyedPRNG(seed)
+			if err != nil {
+				select {
+				case errChan <- err:
+				default:
+				}
+				return
+			}
+			sampler := ring.NewUniformSampler(prng, pRing)
+			for i := start; i < end; i++ {
+				polyVecA[i] = sampler.ReadNew()
+				pRing.PolyToBigint(polyVecA[i], 1, a.Values[i])
+			}
+		}(start, end, seed)
+	}
+
+	wg.Wait()
+	select {
+	case err := <-errChan:
+		return nil, arithmetic.Matrix{}, err
+	default:
+		return polyVecA, a, nil
+	}
+}
+
+func parallelCalculatePolyVecZbTWithZbFromReader(m, lambda int, modulus *big.Int, alpha float64, randSource io.Reader, pRing *ring.Ring) ([]ring.Poly, arithmetic.Matrix, error) {
+	polyVecZbT := make([]ring.Poly, lambda)
+	zb := arithmetic.NewMatrix(m, lambda, modulus)
+	ranges := workerRanges(lambda)
+	seeds, err := readWorkerSeeds(randSource, len(ranges))
+	if err != nil {
+		return nil, arithmetic.Matrix{}, err
+	}
+
+	bound, _ := modulus.Float64()
+	gaussian := ring.DiscreteGaussian{Sigma: alpha, Bound: bound}
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, 1)
+	for idx, r := range ranges {
+		start, end := r[0], r[1]
+		seed := seeds[idx]
+		wg.Add(1)
+		go func(start, end int, seed []byte) {
+			defer wg.Done()
+
+			prng, err := sampling.NewKeyedPRNG(seed)
+			if err != nil {
+				select {
+				case errChan <- err:
+				default:
+				}
+				return
+			}
+			sampler := ring.NewGaussianSampler(prng, pRing, gaussian, false)
+			for i := start; i < end; i++ {
+				polyVecZbT[i] = sampler.ReadNew()
+				coeffT := arithmetic.NewVector(m, modulus)
+				pRing.PolyToBigint(polyVecZbT[i], 1, coeffT.Values)
+				for j := 0; j < m; j++ {
+					zb.Values[j][i] = coeffT.Values[j]
+				}
+			}
+		}(start, end, seed)
+	}
+
+	wg.Wait()
+	select {
+	case err := <-errChan:
+		return nil, arithmetic.Matrix{}, err
+	default:
+		return polyVecZbT, zb, nil
+	}
+}
+
 // ParallelCalculatePolyVecAWithA Sample the matrix A in parallel
 func ParallelCalculatePolyVecAWithA(n, m int, modulus *big.Int, sampler ring.Sampler, pRing *ring.Ring) ([]ring.Poly, arithmetic.Matrix) {
 	a := arithmetic.NewMatrix(n, m, modulus)
 	polyVecA := make([]ring.Poly, n)
-	numCPU := runtime.NumCPU()
-	rowsPerWorker := max(1, n/numCPU)
+	rowsPerWorker := max(1, n/runtime.NumCPU())
 
 	var wg sync.WaitGroup
-	for w := 0; w < numCPU && w*rowsPerWorker < n; w++ {
+	var samplerMu sync.Mutex
+	for startRow := 0; startRow < n; startRow += rowsPerWorker {
 		wg.Add(1)
-		startRow := w * rowsPerWorker
-		endRow := min(n, (w+1)*rowsPerWorker)
+		endRow := min(n, startRow+rowsPerWorker)
 
 		go func(startRow, endRow int) {
 			defer wg.Done()
 			for i := startRow; i < endRow; i++ {
+				samplerMu.Lock()
 				polyVecA[i] = sampler.ReadNew()
+				samplerMu.Unlock()
 				pRing.PolyToBigint(polyVecA[i], 1, a.Values[i])
 			}
 		}(startRow, endRow)
 	}
 	wg.Wait()
-	select {
-	default:
-		return polyVecA, a
-	}
+	return polyVecA, a
 }
 
 // ParallelCalculatePolyVecZbTWithZb Sample the matrix Zb^T in parallel
@@ -366,75 +506,67 @@ func ParallelCalculatePolyVecAWithA(n, m int, modulus *big.Int, sampler ring.Sam
 func ParallelCalculatePolyVecZbTWithZb(m, lambda int, modulus *big.Int, sampler ring.Sampler, pRing *ring.Ring) ([]ring.Poly, arithmetic.Matrix) {
 	polyVecZbT := make([]ring.Poly, lambda)
 	zb := arithmetic.NewMatrix(m, lambda, modulus)
-	numCPU := runtime.NumCPU()
-	rowsPerWorker := max(1, lambda/numCPU)
+	rowsPerWorker := max(1, lambda/runtime.NumCPU())
 
 	var wg sync.WaitGroup
-	for w := 0; w < numCPU && w*rowsPerWorker < lambda; w++ {
+	var samplerMu sync.Mutex
+	for startRow := 0; startRow < lambda; startRow += rowsPerWorker {
 		wg.Add(1)
-		startRow := w * rowsPerWorker
-		endRow := min(lambda, (w+1)*rowsPerWorker)
+		endRow := min(lambda, startRow+rowsPerWorker)
 
 		go func(startRow, endRow int) {
 			defer wg.Done()
 			for i := startRow; i < endRow; i++ {
+				samplerMu.Lock()
 				polyVecZbT[i] = sampler.ReadNew()
-				coefficT := arithmetic.NewVector(m, modulus)
-				pRing.PolyToBigint(polyVecZbT[i], 1, coefficT.Values)
-				for j := range m {
-					zb.Values[j][i] = coefficT.Values[j]
+				samplerMu.Unlock()
+				coeffT := arithmetic.NewVector(m, modulus)
+				pRing.PolyToBigint(polyVecZbT[i], 1, coeffT.Values)
+				for j := 0; j < m; j++ {
+					zb.Values[j][i] = coeffT.Values[j]
 				}
 			}
 		}(startRow, endRow)
 	}
 	wg.Wait()
-	select {
-	default:
-		return polyVecZbT, zb
-	}
+	return polyVecZbT, zb
 }
 
 // ParallelCalculateAZb calculates the matrix A*Zb^T in parallel
-func ParallelCalculateAZb(polyVecA []ring.Poly, PolyVecZbT []ring.Poly, n, m, lambda int, modulus *big.Int, pRing *ring.Ring) (arithmetic.Matrix, error) {
+func ParallelCalculateAZb(polyVecA []ring.Poly, polyVecZbT []ring.Poly, n, m, lambda int, modulus *big.Int, pRing *ring.Ring) (arithmetic.Matrix, error) {
 	aZb := arithmetic.NewMatrix(n, lambda, modulus)
-	numCPU := runtime.NumCPU()
-	rowsPerWorker := max(1, n/numCPU)
+	rowsPerWorker := max(1, n/runtime.NumCPU())
 
 	var wg sync.WaitGroup
-	errChan := make(chan error, numCPU)
-	for w := 0; w < numCPU && w*rowsPerWorker < n; w++ {
+	for startRow := 0; startRow < n; startRow += rowsPerWorker {
 		wg.Add(1)
-		startRow := w * rowsPerWorker
-		endRow := min(n, (w+1)*rowsPerWorker)
+		endRow := min(n, startRow+rowsPerWorker)
 
 		go func(startRow, endRow int) {
 			defer wg.Done()
 			tmpPoly := pRing.NewPoly()
 
 			for i := startRow; i < endRow; i++ {
-				// Level is m
-				coeffics := arithmetic.NewVector(m, modulus)
+				coeffs := arithmetic.NewVector(m, modulus)
 
-				for j := range lambda {
-					// Az[i][j] = row i of A * Column j of Zb = Sum(polyVecA[i] * polyVecZbT[j])
-					pRing.MulCoeffsBarrett(polyVecA[i], PolyVecZbT[j], tmpPoly)
-					pRing.PolyToBigint(tmpPoly, 1, coeffics.Values)
-					aZb.Values[i][j] = coeffics.Sum()
+				for j := 0; j < lambda; j++ {
+					// Az[i][j] = row i of A * column j of Zb = Sum(polyVecA[i] * polyVecZbT[j]).
+					pRing.MulCoeffsBarrett(polyVecA[i], polyVecZbT[j], tmpPoly)
+					pRing.PolyToBigint(tmpPoly, 1, coeffs.Values)
+					aZb.Values[i][j] = coeffs.Sum()
 				}
 			}
 		}(startRow, endRow)
 	}
 	wg.Wait()
-	select {
-	case err := <-errChan:
-		return arithmetic.Matrix{}, err
-	default:
-		return aZb, nil
-	}
+	return aZb, nil
 }
 
 // Encapsulate generates a shared key and encapsulates it
 func (kem *OwChCCAKEM) Encapsulate(pubKey *PublicKey) (ciphertext, sharedKey []byte, err error) {
+	if pubKey == nil {
+		return nil, nil, ErrInvalidPublicKey
+	}
 	pk := pubKey
 
 	// Get parameter values
@@ -541,6 +673,9 @@ func (kem *OwChCCAKEM) Encapsulate(pubKey *PublicKey) (ciphertext, sharedKey []b
 
 // Decapsulate recovers the shared key from a ciphertext
 func (kem *OwChCCAKEM) Decapsulate(privKey *PrivateKey, ciphertext []byte) (sharedKey []byte, err error) {
+	if privKey == nil || privKey.Pk == nil {
+		return nil, ErrInvalidPrivateKey
+	}
 	sk := privKey
 	pk := sk.Pk
 
@@ -956,6 +1091,10 @@ func parseCiphertext(ciphertext []byte, m, lambda int, modulus *big.Int) (c0, c1
 	}
 	if err := hatH1.UnmarshalBinary(ciphertext[pos : pos+hSize]); err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("%w: failed to parse hatH1: %v", ErrInvalidCiphertext, err)
+	}
+	pos += hSize
+	if len(ciphertext) != pos {
+		return nil, nil, nil, nil, nil, fmt.Errorf("%w: ciphertext has trailing data", ErrInvalidCiphertext)
 	}
 
 	return c0, c1, x, hatH0, hatH1, nil
